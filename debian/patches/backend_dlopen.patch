@@ -1,0 +1,24 @@
+From: Kurt Roeckx <kurt@roeckx.be>
+Subject: Use dlopen() with "lib" instead of "$LIB" to open the backends
+Bug-Debian: http://bugs.debian.org/691612
+Forwarded: not-needed
+
+We give dlopen() an absolute path based on $ORIGIN and $LIB.  But $LIB
+is different in case of multiarch.  Just use "lib" instead.
+
+The other way to solve this is to move the libraries to the multiarch locations
+like done in 0.153-1.
+
+Index: elfutils-0.152/libebl/eblopenbackend.c
+===================================================================
+--- elfutils-0.152.orig/libebl/eblopenbackend.c	2012-11-12 20:42:26.000000000 +0100
++++ elfutils-0.152/libebl/eblopenbackend.c	2012-11-12 20:51:01.000000000 +0100
+@@ -334,7 +334,7 @@
+ #ifndef LIBEBL_SUBDIR
+ # define LIBEBL_SUBDIR PACKAGE
+ #endif
+-#define ORIGINDIR "$ORIGIN/../$LIB/" LIBEBL_SUBDIR "/"
++#define ORIGINDIR "$ORIGIN/../lib/" LIBEBL_SUBDIR "/"
+ 
+ 	/* Give it a try.  At least the machine type matches.  First
+            try to load the module.  */

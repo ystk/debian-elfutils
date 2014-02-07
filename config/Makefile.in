@@ -347,7 +347,7 @@ uninstall-am:
 @MAINTAINER_MODE_TRUE@	date +'* %a %b %e %Y' | tr '[\n]' '[ ]' > $$tmpname; \
 @MAINTAINER_MODE_TRUE@	getent passwd "$$(whoami)" | \
 @MAINTAINER_MODE_TRUE@	  awk 'BEGIN {FS=":"} { printf $$5; exit 0}' >> $$tmpname; \
-@MAINTAINER_MODE_TRUE@	echo -n " <$$(whoami)@redhat.com> " >> $$tmpname; \
+@MAINTAINER_MODE_TRUE@	echo -n " <$$(whoami)@gmail.com> " >> $$tmpname; \
 @MAINTAINER_MODE_TRUE@	awk '\
 @MAINTAINER_MODE_TRUE@	  $$1 == "Version" && started { exit } \
 @MAINTAINER_MODE_TRUE@	  $$1 == "Version" { started=1; line=""; sub(/:/,"",$$2); \

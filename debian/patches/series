@@ -7,3 +7,6 @@ m68k_backend.diff
 do-autoreconf.diff
 testsuite-ignore-elflint.diff
 elf_additions.diff
+strict-aliasing.diff
+elf_end_unlock.patch
+backend_dlopen.patch

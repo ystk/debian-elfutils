@@ -137,7 +137,8 @@ am_libdw_a_OBJECTS = dwarf_begin.$(OBJEXT) dwarf_begin_elf.$(OBJEXT) \
 	dwarf_frame_cfa.$(OBJEXT) dwarf_frame_register.$(OBJEXT) \
 	dwarf_cfi_addrframe.$(OBJEXT) dwarf_getcfi.$(OBJEXT) \
 	dwarf_getcfi_elf.$(OBJEXT) dwarf_cfi_end.$(OBJEXT) \
-	dwarf_aggregate_size.$(OBJEXT)
+	dwarf_aggregate_size.$(OBJEXT) \
+	dwarf_getlocation_implicit_pointer.$(OBJEXT)
 libdw_a_OBJECTS = $(am_libdw_a_OBJECTS)
 libdw_pic_a_AR = $(AR) $(ARFLAGS)
 libdw_pic_a_LIBADD =
@@ -339,7 +340,7 @@ libdw_a_SOURCES = dwarf_begin.c dwarf_begin_elf.c dwarf_end.c dwarf_getelf.c \
 		  dwarf_frame_info.c dwarf_frame_cfa.c dwarf_frame_register.c \
 		  dwarf_cfi_addrframe.c \
 		  dwarf_getcfi.c dwarf_getcfi_elf.c dwarf_cfi_end.c \
-		  dwarf_aggregate_size.c
+		  dwarf_aggregate_size.c dwarf_getlocation_implicit_pointer.c
 
 @MAINTAINER_MODE_TRUE@BUILT_SOURCES = $(srcdir)/known-dwarf.h
 @MAINTAINER_MODE_TRUE@MAINTAINERCLEANFILES = $(srcdir)/known-dwarf.h
@@ -498,6 +499,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwarf_getelf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwarf_getfuncs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwarf_getlocation.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwarf_getlocation_implicit_pointer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwarf_getmacros.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwarf_getpubnames.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwarf_getscopes.Po@am__quote@

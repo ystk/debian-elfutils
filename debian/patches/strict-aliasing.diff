@@ -1,0 +1,69 @@
+Description: Fix strict aliasing issues in MD5 and SHA1 code
+Origin: upstream, http://git.fedorahosted.org/cgit/elfutils.git/commit/?id=32899ac4f69d4ca4856d5282464c1f9cee928c8a
+Bug-Debian: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=684825
+Last-Update: 2012-09-08
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/lib/md5.c
++++ b/lib/md5.c
+@@ -82,6 +82,16 @@
+   return resbuf;
+ }
+ 
++static void
++le64_copy (char *dest, uint64_t x)
++{
++  for (size_t i = 0; i < 8; ++i)
++    {
++      dest[i] = (uint8_t) x;
++      x >>= 8;
++    }
++}
++
+ /* Process the remaining bytes in the internal buffer and the usual
+    prolog according to the standard and write the result to RESBUF.
+ 
+@@ -105,9 +115,10 @@
+   memcpy (&ctx->buffer[bytes], fillbuf, pad);
+ 
+   /* Put the 64-bit file length in *bits* at the end of the buffer.  */
+-  *(md5_uint32 *) &ctx->buffer[bytes + pad] = SWAP (ctx->total[0] << 3);
+-  *(md5_uint32 *) &ctx->buffer[bytes + pad + 4] = SWAP ((ctx->total[1] << 3) |
+-							(ctx->total[0] >> 29));
++  const uint64_t bit_length = ((ctx->total[0] << 3)
++                               + ((uint64_t) ((ctx->total[1] << 3) |
++                                              (ctx->total[0] >> 29)) << 32));
++  le64_copy (&ctx->buffer[bytes + pad], bit_length);
+ 
+   /* Process last bytes.  */
+   md5_process_block (ctx->buffer, bytes + pad + 8, ctx);
+--- a/lib/sha1.c
++++ b/lib/sha1.c
+@@ -83,6 +83,13 @@
+   return resbuf;
+ }
+ 
++static void
++be64_copy (char *dest, uint64_t x)
++{
++  for (size_t i = 8; i-- > 0; x >>= 8)
++    dest[i] = (uint8_t) x;
++}
++
+ /* Process the remaining bytes in the internal buffer and the usual
+    prolog according to the standard and write the result to RESBUF.
+ 
+@@ -106,9 +113,10 @@
+   memcpy (&ctx->buffer[bytes], fillbuf, pad);
+ 
+   /* Put the 64-bit file length in *bits* at the end of the buffer.  */
+-  *(sha1_uint32 *) &ctx->buffer[bytes + pad] = SWAP ((ctx->total[1] << 3) |
+-						     (ctx->total[0] >> 29));
+-  *(sha1_uint32 *) &ctx->buffer[bytes + pad + 4] = SWAP (ctx->total[0] << 3);
++  const uint64_t bit_length = ((ctx->total[0] << 3)
++                               + ((uint64_t) ((ctx->total[1] << 3) |
++                                              (ctx->total[0] >> 29)) << 32));
++  be64_copy (&ctx->buffer[bytes + pad], bit_length);
+ 
+   /* Process last bytes.  */
+   sha1_process_block (ctx->buffer, bytes + pad + 8, ctx);
