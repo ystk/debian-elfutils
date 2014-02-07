@@ -1,3 +1,40 @@
+Version 0.152
+
+Various build and warning nits fixed for newest GCC and Autoconf.
+
+libdwfl: Yet another prelink-related fix for another regression.
+	 Look for Linux kernel images in files named with compression suffixes.
+
+elfcmp: New flag --ignore-build-id to ignore differing build ID bits.
+	New flag -l/--verbose to print all differences.
+
+Version 0.151
+
+libdwfl: Fix for more prelink cases with separate debug file.
+
+strip: New flag --strip-sections to remove section headers entirely.
+
+Version 0.150
+
+libdw: Fix for handling huge .debug_aranges section.
+
+libdwfl: Fix for handling prelinked DSO with separate debug file.
+
+findtextrel: Fix diagnostics to work with usual section ordering.
+
+libebl: i386 backend fix for multi-register integer return value location.
+
+Version 0.149:
+
+libdw: Decode new DW_OP_GNU_implicit_pointer operation;
+       new function dwarf_getlocation_implicit_pointer.
+
+libdwfl: New function dwfl_dwarf_line.
+
+addr2line: New flag -F/--flags to print more DWARF line information details.
+
+strip: -g recognizes .gdb_index as a debugging section.
+
 Version 0.148:
 
 libdw: Accept DWARF 4 format: new functions dwarf_next_unit, dwarf_offdie_types.

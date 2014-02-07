@@ -1,10 +1,9 @@
-
-/* A Bison parser, made by GNU Bison 2.4.1.  */
+/* A Bison parser, made by GNU Bison 2.4.3.  */
 
 /* Skeleton implementation for Bison's Yacc-like parsers in C
    
-      Copyright (C) 1984, 1989, 1990, 2000, 2001, 2002, 2003, 2004, 2005, 2006
-   Free Software Foundation, Inc.
+      Copyright (C) 1984, 1989, 1990, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
+   2009, 2010 Free Software Foundation, Inc.
    
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -46,7 +45,7 @@
 #define YYBISON 1
 
 /* Bison version.  */
-#define YYBISON_VERSION "2.4.1"
+#define YYBISON_VERSION "2.4.3"
 
 /* Skeleton name.  */
 #define YYSKELETON_NAME "yacc.c"
@@ -291,7 +290,7 @@ static size_t best_mnemonic_bits;
 
 
 /* Line 189 of yacc.c  */
-#line 295 "i386_parse.c"
+#line 294 "i386_parse.c"
 
 /* Enabling traces.  */
 #ifndef YYDEBUG
@@ -363,7 +362,7 @@ typedef union YYSTYPE
 
 
 /* Line 214 of yacc.c  */
-#line 367 "i386_parse.c"
+#line 366 "i386_parse.c"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
@@ -375,7 +374,7 @@ typedef union YYSTYPE
 
 
 /* Line 264 of yacc.c  */
-#line 379 "i386_parse.c"
+#line 378 "i386_parse.c"
 
 #ifdef short
 # undef short
@@ -425,7 +424,7 @@ typedef short int yytype_int16;
 #define YYSIZE_MAXIMUM ((YYSIZE_T) -1)
 
 #ifndef YY_
-# if YYENABLE_NLS
+# if defined YYENABLE_NLS && YYENABLE_NLS
 #  if ENABLE_NLS
 #   include <libintl.h> /* INFRINGES ON USER NAME SPACE */
 #   define YY_(msgid) dgettext ("bison-runtime", msgid)
@@ -798,9 +797,18 @@ static const yytype_uint8 yystos[] =
 
 /* Like YYERROR except do call yyerror.  This remains here temporarily
    to ease the transition to the new meaning of YYERROR, for GCC.
-   Once GCC version 2 has supplanted version 1, this can go.  */
+   Once GCC version 2 has supplanted version 1, this can go.  However,
+   YYFAIL appears to be in use.  Nevertheless, it is formally deprecated
+   in Bison 2.4.2's NEWS entry, where a plan to phase it out is
+   discussed.  */
 
 #define YYFAIL		goto yyerrlab
+#if defined YYFAIL
+  /* This is here to suppress warnings from the GCC cpp's
+     -Wunused-macros.  Normally we don't worry about that warning, but
+     some users do, and we want to make it easy for users to remove
+     YYFAIL uses, which will produce warnings from Bison 2.5.  */
+#endif
 
 #define YYRECOVERING()  (!!yyerrstatus)
 
@@ -857,7 +865,7 @@ while (YYID (0))
    we won't break user code: when these are the locations we know.  */
 
 #ifndef YY_LOCATION_PRINT
-# if YYLTYPE_IS_TRIVIAL
+# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
 #  define YY_LOCATION_PRINT(File, Loc)			\
      fprintf (File, "%d.%d-%d.%d",			\
 	      (Loc).first_line, (Loc).first_column,	\
@@ -1596,7 +1604,7 @@ yyreduce:
     {
         case 2:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 245 "i386_parse.y"
     {
 		      if (error_message_count != 0)
@@ -1609,28 +1617,28 @@ yyreduce:
 
   case 5:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 259 "i386_parse.y"
     { new_bitfield ((yyvsp[(2) - (3)].str), (yyvsp[(3) - (3)].num)); }
     break;
 
   case 6:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 261 "i386_parse.y"
     { new_bitfield ((yyvsp[(2) - (2)].str), -1); }
     break;
 
   case 7:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 263 "i386_parse.y"
     { new_bitfield ((yyvsp[(2) - (2)].str), -2); }
     break;
 
   case 8:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 265 "i386_parse.y"
     {
 		      struct synonym *newp = xmalloc (sizeof (*newp));
@@ -1647,7 +1655,7 @@ yyreduce:
 
   case 12:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 284 "i386_parse.y"
     {
 		      if ((yyvsp[(3) - (6)].field) != NULL && strcmp ((yyvsp[(3) - (6)].field)->name, "RE") != 0
@@ -1735,7 +1743,7 @@ yyreduce:
 
   case 14:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 370 "i386_parse.y"
     {
 		      struct known_bitfield search;
@@ -1755,14 +1763,14 @@ yyreduce:
 
   case 15:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 385 "i386_parse.y"
     { (yyval.field) = NULL; }
     break;
 
   case 16:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 389 "i386_parse.y"
     {
 		      check_bits ((yyvsp[(3) - (3)].bit));
@@ -1777,7 +1785,7 @@ yyreduce:
 
   case 17:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 399 "i386_parse.y"
     {
 		      check_bits ((yyvsp[(1) - (1)].bit));
@@ -1787,7 +1795,7 @@ yyreduce:
 
   case 18:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 406 "i386_parse.y"
     {
 		      struct bitvalue *runp = (yyvsp[(1) - (2)].bit);
@@ -1800,14 +1808,14 @@ yyreduce:
 
   case 19:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 414 "i386_parse.y"
     { (yyval.bit) = (yyvsp[(1) - (1)].bit); }
     break;
 
   case 20:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 418 "i386_parse.y"
     {
 		      (yyval.bit) = xmalloc (sizeof (struct bitvalue));
@@ -1819,7 +1827,7 @@ yyreduce:
 
   case 21:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 425 "i386_parse.y"
     {
 		      (yyval.bit) = xmalloc (sizeof (struct bitvalue));
@@ -1831,7 +1839,7 @@ yyreduce:
 
   case 22:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 432 "i386_parse.y"
     {
 		      (yyval.bit) = xmalloc (sizeof (struct bitvalue));
@@ -1856,21 +1864,21 @@ yyreduce:
 
   case 23:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 454 "i386_parse.y"
     { (yyval.arg) = (yyvsp[(2) - (2)].arg); }
     break;
 
   case 24:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 456 "i386_parse.y"
     { (yyval.arg) = NULL; }
     break;
 
   case 25:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 460 "i386_parse.y"
     {
 		      struct argument *runp = (yyvsp[(1) - (3)].arg);
@@ -1885,7 +1893,7 @@ yyreduce:
 
   case 26:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 470 "i386_parse.y"
     {
 		      (yyval.arg) = xmalloc (sizeof (struct argument));
@@ -1896,7 +1904,7 @@ yyreduce:
 
   case 27:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 478 "i386_parse.y"
     {
 		      struct argname *runp = (yyvsp[(1) - (2)].name);
@@ -1909,14 +1917,14 @@ yyreduce:
 
   case 28:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 486 "i386_parse.y"
     { (yyval.name) = (yyvsp[(1) - (1)].name); }
     break;
 
   case 29:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 489 "i386_parse.y"
     {
 		      (yyval.name) = xmalloc (sizeof (struct argname));
@@ -1953,7 +1961,7 @@ yyreduce:
 
   case 30:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 521 "i386_parse.y"
     {
 		      (yyval.name) = xmalloc (sizeof (struct argname));
@@ -1967,7 +1975,7 @@ yyreduce:
 
   case 31:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 530 "i386_parse.y"
     {
 		      (yyval.name) = xmalloc (sizeof (struct argname));
@@ -1979,7 +1987,7 @@ yyreduce:
 
   case 32:
 
-/* Line 1455 of yacc.c  */
+/* Line 1464 of yacc.c  */
 #line 537 "i386_parse.y"
     {
 		      (yyval.name) = xmalloc (sizeof (struct argname));
@@ -1993,8 +2001,8 @@ yyreduce:
 
 
 
-/* Line 1455 of yacc.c  */
-#line 1998 "i386_parse.c"
+/* Line 1464 of yacc.c  */
+#line 2006 "i386_parse.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -2205,7 +2213,7 @@ yyreturn:
 
 
 
-/* Line 1675 of yacc.c  */
+/* Line 1684 of yacc.c  */
 #line 547 "i386_parse.y"
 
 

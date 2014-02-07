@@ -1,5 +1,5 @@
 /* Recover relocatibility for addresses computed from debug information.
-   Copyright (C) 2005-2009 Red Hat, Inc.
+   Copyright (C) 2005-2010 Red Hat, Inc.
    This file is part of Red Hat elfutils.
 
    Red Hat elfutils is free software; you can redistribute it and/or modify
@@ -134,7 +134,7 @@ cache_sections (Dwfl_Module *mod)
 	  newref->scn = scn;
 	  newref->relocs = NULL;
 	  newref->name = name;
-	  newref->start = shdr->sh_addr + mod->main.bias;
+	  newref->start = dwfl_adjusted_address (mod, shdr->sh_addr);
 	  newref->end = newref->start + shdr->sh_size;
 	  newref->next = refs;
 	  refs = newref;
@@ -239,8 +239,7 @@ dwfl_module_relocations (Dwfl_Module *mod)
       return 1;
 
     case ET_EXEC:
-      assert (mod->main.bias == 0);
-      assert (mod->debug.bias == 0);
+      assert (mod->main.vaddr == mod->low_addr);
       break;
     }
 
@@ -406,7 +405,7 @@ dwfl_module_address_section (Dwfl_Module *mod, Dwarf_Addr *address,
 	}
     }
 
-  *bias = mod->main.bias;
+  *bias = dwfl_adjusted_address (mod, 0);
   return mod->reloc_info->refs[idx].scn;
 }
 INTDEF (dwfl_module_address_section)

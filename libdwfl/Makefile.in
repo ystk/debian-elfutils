@@ -72,12 +72,12 @@ am__libdwfl_a_SOURCES_DIST = dwfl_begin.c dwfl_end.c dwfl_error.c \
 	dwfl_module_nextcu.c dwfl_nextcu.c dwfl_cumodule.c \
 	dwfl_module_addrdie.c dwfl_addrdie.c lines.c dwfl_lineinfo.c \
 	dwfl_line_comp_dir.c dwfl_linemodule.c dwfl_linecu.c \
-	dwfl_getsrclines.c dwfl_onesrcline.c dwfl_module_getsrc.c \
-	dwfl_getsrc.c dwfl_module_getsrc_file.c libdwfl_crc32.c \
-	libdwfl_crc32_file.c elf-from-memory.c dwfl_module_dwarf_cfi.c \
-	dwfl_module_eh_cfi.c dwfl_module_getsym.c \
-	dwfl_module_addrname.c dwfl_module_addrsym.c \
-	dwfl_module_return_value_location.c \
+	dwfl_dwarf_line.c dwfl_getsrclines.c dwfl_onesrcline.c \
+	dwfl_module_getsrc.c dwfl_getsrc.c dwfl_module_getsrc_file.c \
+	libdwfl_crc32.c libdwfl_crc32_file.c elf-from-memory.c \
+	dwfl_module_dwarf_cfi.c dwfl_module_eh_cfi.c \
+	dwfl_module_getsym.c dwfl_module_addrname.c \
+	dwfl_module_addrsym.c dwfl_module_return_value_location.c \
 	dwfl_module_register_names.c dwfl_segment_report_module.c \
 	link_map.c core-file.c open.c image-header.c gzip.c bzip2.c \
 	lzma.c
@@ -102,13 +102,14 @@ am_libdwfl_a_OBJECTS = dwfl_begin.$(OBJEXT) dwfl_end.$(OBJEXT) \
 	dwfl_module_addrdie.$(OBJEXT) dwfl_addrdie.$(OBJEXT) \
 	lines.$(OBJEXT) dwfl_lineinfo.$(OBJEXT) \
 	dwfl_line_comp_dir.$(OBJEXT) dwfl_linemodule.$(OBJEXT) \
-	dwfl_linecu.$(OBJEXT) dwfl_getsrclines.$(OBJEXT) \
-	dwfl_onesrcline.$(OBJEXT) dwfl_module_getsrc.$(OBJEXT) \
-	dwfl_getsrc.$(OBJEXT) dwfl_module_getsrc_file.$(OBJEXT) \
-	libdwfl_crc32.$(OBJEXT) libdwfl_crc32_file.$(OBJEXT) \
-	elf-from-memory.$(OBJEXT) dwfl_module_dwarf_cfi.$(OBJEXT) \
-	dwfl_module_eh_cfi.$(OBJEXT) dwfl_module_getsym.$(OBJEXT) \
-	dwfl_module_addrname.$(OBJEXT) dwfl_module_addrsym.$(OBJEXT) \
+	dwfl_linecu.$(OBJEXT) dwfl_dwarf_line.$(OBJEXT) \
+	dwfl_getsrclines.$(OBJEXT) dwfl_onesrcline.$(OBJEXT) \
+	dwfl_module_getsrc.$(OBJEXT) dwfl_getsrc.$(OBJEXT) \
+	dwfl_module_getsrc_file.$(OBJEXT) libdwfl_crc32.$(OBJEXT) \
+	libdwfl_crc32_file.$(OBJEXT) elf-from-memory.$(OBJEXT) \
+	dwfl_module_dwarf_cfi.$(OBJEXT) dwfl_module_eh_cfi.$(OBJEXT) \
+	dwfl_module_getsym.$(OBJEXT) dwfl_module_addrname.$(OBJEXT) \
+	dwfl_module_addrsym.$(OBJEXT) \
 	dwfl_module_return_value_location.$(OBJEXT) \
 	dwfl_module_register_names.$(OBJEXT) \
 	dwfl_segment_report_module.$(OBJEXT) link_map.$(OBJEXT) \
@@ -297,12 +298,12 @@ libdwfl_a_SOURCES = dwfl_begin.c dwfl_end.c dwfl_error.c \
 	dwfl_module_nextcu.c dwfl_nextcu.c dwfl_cumodule.c \
 	dwfl_module_addrdie.c dwfl_addrdie.c lines.c dwfl_lineinfo.c \
 	dwfl_line_comp_dir.c dwfl_linemodule.c dwfl_linecu.c \
-	dwfl_getsrclines.c dwfl_onesrcline.c dwfl_module_getsrc.c \
-	dwfl_getsrc.c dwfl_module_getsrc_file.c libdwfl_crc32.c \
-	libdwfl_crc32_file.c elf-from-memory.c dwfl_module_dwarf_cfi.c \
-	dwfl_module_eh_cfi.c dwfl_module_getsym.c \
-	dwfl_module_addrname.c dwfl_module_addrsym.c \
-	dwfl_module_return_value_location.c \
+	dwfl_dwarf_line.c dwfl_getsrclines.c dwfl_onesrcline.c \
+	dwfl_module_getsrc.c dwfl_getsrc.c dwfl_module_getsrc_file.c \
+	libdwfl_crc32.c libdwfl_crc32_file.c elf-from-memory.c \
+	dwfl_module_dwarf_cfi.c dwfl_module_eh_cfi.c \
+	dwfl_module_getsym.c dwfl_module_addrname.c \
+	dwfl_module_addrsym.c dwfl_module_return_value_location.c \
 	dwfl_module_register_names.c dwfl_segment_report_module.c \
 	link_map.c core-file.c open.c image-header.c $(am__append_3) \
 	$(am__append_4) $(am__append_5)
@@ -381,6 +382,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwfl_build_id_find_debuginfo.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwfl_build_id_find_elf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwfl_cumodule.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwfl_dwarf_line.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwfl_end.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwfl_error.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dwfl_getdwarf.Po@am__quote@

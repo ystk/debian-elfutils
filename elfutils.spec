@@ -1,7 +1,7 @@
 # -*- rpm-spec-*-
 Summary: A collection of utilities and DSOs to handle compiled objects
 Name: elfutils
-Version: 0.148
+Version: 0.152
 Release: 1
 License: GPLv2 with exceptions
 Group: Development/Tools
@@ -19,6 +19,10 @@ BuildRequires: bison >= 1.875
 BuildRequires: flex >= 2.5.4a
 BuildRequires: bzip2
 BuildRequires: m4
+BuildRequires: gettext
+BuildRequires: zlib-devel
+BuildRequires: bzip2-devel
+BuildRequires: xz-devel
 
 %define _gnu %{nil}
 %define _programprefix eu-
@@ -170,6 +174,7 @@ rm -rf ${RPM_BUILD_ROOT}
 %defattr(-,root,root)
 %{_libdir}/libelf-%{version}.so
 %{_libdir}/libelf.so.*
+%{_datadir}/locale/*/LC_MESSAGES/elfutils.mo
 
 %files libelf-devel
 %defattr(-,root,root)
@@ -183,6 +188,33 @@ rm -rf ${RPM_BUILD_ROOT}
 %{_libdir}/libelf.a
 
 %changelog
+* Tue Feb 15 2011  <drepper@gmail.com> 0.152-1
+- Various build and warning nits fixed for newest GCC and Autoconf.
+- libdwfl: Yet another prelink-related fix for another regression. 
+  	 Look for Linux kernel images in files named with compression 
+  suffixes.
+- elfcmp: New flag --ignore-build-id to ignore differing build ID 
+  bits. 	New flag -l/--verbose to print all differences.
+
+* Wed Jan 12 2011  <drepper@gmail.com> 0.151-1
+- libdwfl: Fix for more prelink cases with separate debug file.
+- strip: New flag --strip-sections to remove section headers entirely.
+
+* Mon Nov 22 2010  <drepper@gmail.com> 0.150-1
+- libdw: Fix for handling huge .debug_aranges section.
+- libdwfl: Fix for handling prelinked DSO with separate debug file.
+- findtextrel: Fix diagnostics to work with usual section ordering.
+- libebl: i386 backend fix for multi-register integer return value 
+  location.
+
+* Mon Sep 13 2010  <drepper@redhat.com> 0.149-1
+- libdw: Decode new DW_OP_GNU_implicit_pointer operation;        new 
+  function dwarf_getlocation_implicit_pointer.
+- libdwfl: New function dwfl_dwarf_line.
+- addr2line: New flag -F/--flags to print more DWARF line information 
+  details.
+- strip: -g recognizes .gdb_index as a debugging section.
+
 * Mon Jun 28 2010  <drepper@redhat.com> 0.148-1
 - libdw: Accept DWARF 4 format: new functions dwarf_next_unit, 
   dwarf_offdie_types.        New functions dwarf_lineisa, 

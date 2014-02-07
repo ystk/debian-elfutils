@@ -1,5 +1,5 @@
 /* Find debugging and symbol information for a module in libdwfl.
-   Copyright (C) 2005-2010 Red Hat, Inc.
+   Copyright (C) 2005-2011 Red Hat, Inc.
    This file is part of Red Hat elfutils.
 
    Red Hat elfutils is free software; you can redistribute it and/or modify
@@ -55,7 +55,7 @@
 
 
 /* Open libelf FILE->fd and compute the load base of ELF as loaded in MOD.
-   When we return success, FILE->elf and FILE->bias are set up.  */
+   When we return success, FILE->elf and FILE->vaddr are set up.  */
 static inline Dwfl_Error
 open_elf (Dwfl_Module *mod, struct dwfl_file *file)
 {
@@ -93,35 +93,55 @@ open_elf (Dwfl_Module *mod, struct dwfl_file *file)
       return DWFL_E (LIBELF, elf_errno ());
     }
 
-  /* The addresses in an ET_EXEC file are absolute.  The lowest p_vaddr of
-     the main file can differ from that of the debug file due to prelink.
-     But that doesn't not change addresses that symbols, debuginfo, or
-     sh_addr of any program sections refer to.  */
-  file->bias = 0;
-  if (mod->e_type != ET_EXEC)
+  if (mod->e_type != ET_REL)
     {
+      /* In any non-ET_REL file, we compute the "synchronization address".
+
+	 We start with the address at the end of the first PT_LOAD
+	 segment.  When prelink converts REL to RELA in an ET_DYN
+	 file, it expands the space between the beginning of the
+	 segment and the actual code/data addresses.  Since that
+	 change wasn't made in the debug file, the distance from
+	 p_vaddr to an address of interest (in an st_value or DWARF
+	 data) now differs between the main and debug files.  The
+	 distance from address_sync to an address of interest remains
+	 consistent.
+
+	 If there are no section headers at all (full stripping), then
+	 the end of the first segment is a valid synchronization address.
+	 This cannot happen in a prelinked file, since prelink itself
+	 relies on section headers for prelinking and for undoing it.
+	 (If you do full stripping on a prelinked file, then you get what
+	 you deserve--you can neither undo the prelinking, nor expect to
+	 line it up with a debug file separated before prelinking.)
+
+	 However, when prelink processes an ET_EXEC file, it can do
+	 something different.  There it juggles the "special" sections
+	 (SHT_DYNSYM et al) to make space for the additional prelink
+	 special sections.  Sometimes it will do this by moving a special
+	 section like .dynstr after the real program sections in the first
+	 PT_LOAD segment--i.e. to the end.  That changes the end address of
+	 the segment, so it no longer lines up correctly and is not a valid
+	 synchronization address to use.  Because of this, we need to apply
+	 a different prelink-savvy means to discover the synchronization
+	 address when there is a separate debug file and a prelinked main
+	 file.  That is done in find_debuginfo, below.  */
+
       size_t phnum;
       if (unlikely (elf_getphdrnum (file->elf, &phnum) != 0))
 	goto elf_error;
 
+      file->vaddr = file->address_sync = 0;
       for (size_t i = 0; i < phnum; ++i)
 	{
 	  GElf_Phdr ph_mem;
 	  GElf_Phdr *ph = gelf_getphdr (file->elf, i, &ph_mem);
-	  if (ph == NULL)
+	  if (unlikely (ph == NULL))
 	    goto elf_error;
 	  if (ph->p_type == PT_LOAD)
 	    {
-	      GElf_Addr align = mod->dwfl->segment_align;
-	      if (align <= 1)
-		{
-		  if ((mod->low_addr & (ph->p_align - 1)) == 0)
-		    align = ph->p_align;
-		  else
-		    align = ((GElf_Addr) 1 << ffsll (mod->low_addr)) >> 1;
-		}
-
-	      file->bias = ((mod->low_addr & -align) - (ph->p_vaddr & -align));
+	      file->vaddr = ph->p_vaddr & -ph->p_align;
+	      file->address_sync = ph->p_vaddr + ph->p_memsz;
 	      break;
 	    }
 	}
@@ -130,7 +150,7 @@ open_elf (Dwfl_Module *mod, struct dwfl_file *file)
   mod->e_type = ehdr->e_type;
 
   /* Relocatable Linux kernels are ET_EXEC but act like ET_DYN.  */
-  if (mod->e_type == ET_EXEC && file->bias != 0)
+  if (mod->e_type == ET_EXEC && file->vaddr != mod->low_addr)
     mod->e_type = ET_DYN;
 
   return DWFL_E_NOERROR;
@@ -198,6 +218,8 @@ __libdwfl_getelf (Dwfl_Module *mod)
 	  mod->main.fd = -1;
 	}
     }
+
+  mod->main_bias = mod->e_type == ET_REL ? 0 : mod->low_addr - mod->main.vaddr;
 }
 
 /* Search an ELF file for a ".gnu_debuglink" section.  */
@@ -260,6 +282,258 @@ find_debuglink (Elf *elf, GElf_Word *crc)
   return rawdata->d_buf;
 }
 
+/* If the main file might have been prelinked, then we need to
+   discover the correct synchronization address between the main and
+   debug files.  Because of prelink's section juggling, we cannot rely
+   on the address_sync computed from PT_LOAD segments (see open_elf).
+
+   We will attempt to discover a synchronization address based on the
+   section headers instead.  But finding a section address that is
+   safe to use requires identifying which sections are SHT_PROGBITS.
+   We can do that in the main file, but in the debug file all the
+   allocated sections have been transformed into SHT_NOBITS so we have
+   lost the means to match them up correctly.
+
+   The only method left to us is to decode the .gnu.prelink_undo
+   section in the prelinked main file.  This shows what the sections
+   looked like before prelink juggled them--when they still had a
+   direct correspondence to the debug file.  */
+static Dwfl_Error
+find_prelink_address_sync (Dwfl_Module *mod)
+{
+  /* The magic section is only identified by name.  */
+  size_t shstrndx;
+  if (elf_getshdrstrndx (mod->main.elf, &shstrndx) < 0)
+    return DWFL_E_LIBELF;
+
+  Elf_Scn *scn = NULL;
+  while ((scn = elf_nextscn (mod->main.elf, scn)) != NULL)
+    {
+      GElf_Shdr shdr_mem;
+      GElf_Shdr *shdr = gelf_getshdr (scn, &shdr_mem);
+      if (unlikely (shdr == NULL))
+	return DWFL_E_LIBELF;
+      if (shdr->sh_type == SHT_PROGBITS
+	  && !(shdr->sh_flags & SHF_ALLOC)
+	  && shdr->sh_name != 0)
+	{
+	  const char *secname = elf_strptr (mod->main.elf, shstrndx,
+					    shdr->sh_name);
+	  if (unlikely (secname == NULL))
+	    return DWFL_E_LIBELF;
+	  if (!strcmp (secname, ".gnu.prelink_undo"))
+	    break;
+	}
+    }
+
+  if (scn == NULL)
+    /* There was no .gnu.prelink_undo section.  */
+    return DWFL_E_NOERROR;
+
+  Elf_Data *undodata = elf_rawdata (scn, NULL);
+  if (unlikely (undodata == NULL))
+    return DWFL_E_LIBELF;
+
+  /* Decode the section.  It consists of the original ehdr, phdrs,
+     and shdrs (but omits section 0).  */
+
+  union
+  {
+    Elf32_Ehdr e32;
+    Elf64_Ehdr e64;
+  } ehdr;
+  Elf_Data dst =
+    {
+      .d_buf = &ehdr,
+      .d_size = sizeof ehdr,
+      .d_type = ELF_T_EHDR,
+      .d_version = EV_CURRENT
+    };
+  Elf_Data src = *undodata;
+  src.d_size = gelf_fsize (mod->main.elf, ELF_T_EHDR, 1, EV_CURRENT);
+  src.d_type = ELF_T_EHDR;
+  if (unlikely (gelf_xlatetom (mod->main.elf, &dst, &src,
+			       elf_getident (mod->main.elf, NULL)[EI_DATA])
+		== NULL))
+    return DWFL_E_LIBELF;
+
+  size_t shentsize = gelf_fsize (mod->main.elf, ELF_T_SHDR, 1, EV_CURRENT);
+  size_t phentsize = gelf_fsize (mod->main.elf, ELF_T_PHDR, 1, EV_CURRENT);
+
+  uint_fast16_t phnum;
+  uint_fast16_t shnum;
+  if (ehdr.e32.e_ident[EI_CLASS] == ELFCLASS32)
+    {
+      if (ehdr.e32.e_shentsize != shentsize
+	  || ehdr.e32.e_phentsize != phentsize)
+	return DWFL_E_BAD_PRELINK;
+      phnum = ehdr.e32.e_phnum;
+      shnum = ehdr.e32.e_shnum;
+    }
+  else
+    {
+      if (ehdr.e64.e_shentsize != shentsize
+	  || ehdr.e64.e_phentsize != phentsize)
+	return DWFL_E_BAD_PRELINK;
+      phnum = ehdr.e64.e_phnum;
+      shnum = ehdr.e64.e_shnum;
+    }
+
+  /* Since prelink does not store the zeroth section header in the undo
+     section, it cannot support SHN_XINDEX encoding.  */
+  if (unlikely (shnum >= SHN_LORESERVE)
+      || unlikely (undodata->d_size != (src.d_size
+					+ phnum * phentsize
+					+ (shnum - 1) * shentsize)))
+    return DWFL_E_BAD_PRELINK;
+
+  /* We look at the allocated SHT_PROGBITS (or SHT_NOBITS) sections.  (Most
+     every file will have some SHT_PROGBITS sections, but it's possible to
+     have one with nothing but .bss, i.e. SHT_NOBITS.)  The special sections
+     that can be moved around have different sh_type values--except for
+     .interp, the section that became the PT_INTERP segment.  So we exclude
+     the SHT_PROGBITS section whose address matches the PT_INTERP p_vaddr.
+     For this reason, we must examine the phdrs first to find PT_INTERP.  */
+
+  GElf_Addr main_interp = 0;
+  {
+    size_t main_phnum;
+    if (unlikely (elf_getphdrnum (mod->main.elf, &main_phnum)))
+      return DWFL_E_LIBELF;
+    for (size_t i = 0; i < main_phnum; ++i)
+      {
+	GElf_Phdr phdr;
+	if (unlikely (gelf_getphdr (mod->main.elf, i, &phdr) == NULL))
+	  return DWFL_E_LIBELF;
+	if (phdr.p_type == PT_INTERP)
+	  {
+	    main_interp = phdr.p_vaddr;
+	    break;
+	  }
+      }
+  }
+
+  src.d_buf += src.d_size;
+  src.d_type = ELF_T_PHDR;
+  src.d_size = phnum * phentsize;
+
+  GElf_Addr undo_interp = 0;
+  {
+    union
+    {
+      Elf32_Phdr p32[phnum];
+      Elf64_Phdr p64[phnum];
+    } phdr;
+    dst.d_buf = &phdr;
+    dst.d_size = sizeof phdr;
+    if (unlikely (gelf_xlatetom (mod->main.elf, &dst, &src,
+				 ehdr.e32.e_ident[EI_DATA]) == NULL))
+      return DWFL_E_LIBELF;
+    if (ehdr.e32.e_ident[EI_CLASS] == ELFCLASS32)
+      {
+	for (uint_fast16_t i = 0; i < phnum; ++i)
+	  if (phdr.p32[i].p_type == PT_INTERP)
+	    {
+	      undo_interp = phdr.p32[i].p_vaddr;
+	      break;
+	    }
+      }
+    else
+      {
+	for (uint_fast16_t i = 0; i < phnum; ++i)
+	  if (phdr.p64[i].p_type == PT_INTERP)
+	    {
+	      undo_interp = phdr.p64[i].p_vaddr;
+	      break;
+	    }
+      }
+  }
+
+  if (unlikely ((main_interp == 0) != (undo_interp == 0)))
+    return DWFL_E_BAD_PRELINK;
+
+  src.d_buf += src.d_size;
+  src.d_type = ELF_T_SHDR;
+  src.d_size = gelf_fsize (mod->main.elf, ELF_T_SHDR, shnum - 1, EV_CURRENT);
+
+  union
+  {
+    Elf32_Shdr s32[shnum - 1];
+    Elf64_Shdr s64[shnum - 1];
+  } shdr;
+  dst.d_buf = &shdr;
+  dst.d_size = sizeof shdr;
+  if (unlikely (gelf_xlatetom (mod->main.elf, &dst, &src,
+			       ehdr.e32.e_ident[EI_DATA]) == NULL))
+    return DWFL_E_LIBELF;
+
+  /* Now we can look at the original section headers of the main file
+     before it was prelinked.  First we'll apply our method to the main
+     file sections as they are after prelinking, to calculate the
+     synchronization address of the main file.  Then we'll apply that
+     same method to the saved section headers, to calculate the matching
+     synchronization address of the debug file.
+
+     The method is to consider SHF_ALLOC sections that are either
+     SHT_PROGBITS or SHT_NOBITS, excluding the section whose sh_addr
+     matches the PT_INTERP p_vaddr.  The special sections that can be
+     moved by prelink have other types, except for .interp (which
+     becomes PT_INTERP).  The "real" sections cannot move as such, but
+     .bss can be split into .dynbss and .bss, with the total memory
+     image remaining the same but being spread across the two sections.
+     So we consider the highest section end, which still matches up.  */
+
+  GElf_Addr highest;
+
+  inline void consider_shdr (GElf_Addr interp,
+			     GElf_Word sh_type,
+			     GElf_Xword sh_flags,
+			     GElf_Addr sh_addr,
+			     GElf_Xword sh_size)
+  {
+    if ((sh_flags & SHF_ALLOC)
+	&& ((sh_type == SHT_PROGBITS && sh_addr != interp)
+	    || sh_type == SHT_NOBITS))
+      {
+	const GElf_Addr sh_end = sh_addr + sh_size;
+	if (sh_end > highest)
+	  highest = sh_end;
+      }
+  }
+
+  highest = 0;
+  scn = NULL;
+  while ((scn = elf_nextscn (mod->main.elf, scn)) != NULL)
+    {
+      GElf_Shdr sh_mem;
+      GElf_Shdr *sh = gelf_getshdr (scn, &sh_mem);
+      if (unlikely (sh == NULL))
+	return DWFL_E_LIBELF;
+      consider_shdr (main_interp, sh->sh_type, sh->sh_flags,
+		     sh->sh_addr, sh->sh_size);
+    }
+  if (highest > mod->main.vaddr)
+    {
+      mod->main.address_sync = highest;
+
+      highest = 0;
+      if (ehdr.e32.e_ident[EI_CLASS] == ELFCLASS32)
+	for (size_t i = 0; i < shnum - 1; ++i)
+	  consider_shdr (undo_interp, shdr.s32[i].sh_type, shdr.s32[i].sh_flags,
+			 shdr.s32[i].sh_addr, shdr.s32[i].sh_size);
+      else
+	for (size_t i = 0; i < shnum - 1; ++i)
+	  consider_shdr (undo_interp, shdr.s64[i].sh_type, shdr.s64[i].sh_flags,
+			 shdr.s64[i].sh_addr, shdr.s64[i].sh_size);
+
+      if (highest > mod->debug.vaddr)
+	mod->debug.address_sync = highest;
+      else
+	return DWFL_E_BAD_PRELINK;
+    }
+
+  return DWFL_E_NOERROR;
+}
 
 /* Find the separate debuginfo file for this module and open libelf on it.
    When we return success, MOD->debug is set up.  */
@@ -277,7 +551,10 @@ find_debuginfo (Dwfl_Module *mod)
 							   debuglink_file,
 							   debuglink_crc,
 							   &mod->debug.name);
-  return open_elf (mod, &mod->debug);
+  Dwfl_Error result = open_elf (mod, &mod->debug);
+  if (result == DWFL_E_NOERROR && mod->debug.address_sync != 0)
+    result = find_prelink_address_sync (mod);
+  return result;
 }
 
 
@@ -733,7 +1010,7 @@ find_dw (Dwfl_Module *mod)
     {
     case DWFL_E_NOERROR:
       mod->debug.elf = mod->main.elf;
-      mod->debug.bias = mod->main.bias;
+      mod->debug.address_sync = mod->main.address_sync;
       return;
 
     case DWFL_E_NO_DWARF:
@@ -782,7 +1059,7 @@ dwfl_module_getdwarf (Dwfl_Module *mod, Dwarf_Addr *bias)
 	    (void) __libdwfl_relocate (mod, mod->debug.elf, false);
 	}
 
-      *bias = mod->debug.bias;
+      *bias = dwfl_adjusted_dwarf_addr (mod, 0);
       return mod->dw;
     }
 
