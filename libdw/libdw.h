@@ -1,51 +1,30 @@
 /* Interfaces for libdw.
-   Copyright (C) 2002-2010 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   Copyright (C) 2002-2010, 2013 Red Hat, Inc.
+   This file is part of elfutils.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of either
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+     * the GNU Lesser General Public License as published by the Free
+       Software Foundation; either version 3 of the License, or (at
+       your option) any later version
+
+   or
+
+     * the GNU General Public License as published by the Free
+       Software Foundation; either version 2 of the License, or (at
+       your option) any later version
+
+   or both in parallel, as here.
+
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   In addition, as a special exception, Red Hat, Inc. gives You the
-   additional right to link the code of Red Hat elfutils with code licensed
-   under any Open Source Initiative certified open source license
-   (http://www.opensource.org/licenses/index.php) which requires the
-   distribution of source code with any binary distribution and to
-   distribute linked combinations of the two.  Non-GPL Code permitted under
-   this exception must only link to the code of Red Hat elfutils through
-   those well defined interfaces identified in the file named EXCEPTION
-   found in the source code files (the "Approved Interfaces").  The files
-   of Non-GPL Code may instantiate templates or use macros or inline
-   functions from the Approved Interfaces without causing the resulting
-   work to be covered by the GNU General Public License.  Only Red Hat,
-   Inc. may make changes or additions to the list of Approved Interfaces.
-   Red Hat's grant of this exception is conditioned upon your not adding
-   any new exceptions.  If you wish to add a new Approved Interface or
-   exception, please contact Red Hat.  You must obey the GNU General Public
-   License in all respects for all of the Red Hat elfutils code and other
-   code used in conjunction with Red Hat elfutils except the Non-GPL Code
-   covered by this exception.  If you modify this file, you may extend this
-   exception to your version of the file, but you are not obligated to do
-   so.  If you do not wish to provide this exception without modification,
-   you must delete this exception statement from your version and license
-   this file solely under the GPL without exception.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received copies of the GNU General Public License and
+   the GNU Lesser General Public License along with this program.  If
+   not, see <http://www.gnu.org/licenses/>.  */
 
 #ifndef _LIBDW_H
 #define _LIBDW_H	1
@@ -281,6 +260,18 @@ extern Dwarf *dwarf_begin_elf (Elf *elf, Dwarf_Cmd cmd, Elf_Scn *scngrp);
 /* Retrieve ELF descriptor used for DWARF access.  */
 extern Elf *dwarf_getelf (Dwarf *dwarf);
 
+/* Retrieves the DWARF descriptor for debugaltlink data.  Returns NULL
+   if no alternate debug data has been supplied.  */
+extern Dwarf *dwarf_getalt (Dwarf *main);
+
+/* Provides the data referenced by the .gnu_debugaltlink section.  The
+   caller should check that MAIN and ALT match (i.e., they have the
+   same build ID).  It is the responsibility of the caller to ensure
+   that the data referenced by ALT stays valid while it is used by
+   MAIN, until dwarf_setalt is called on MAIN with a different
+   descriptor, or dwarf_end.  */
+extern void dwarf_setalt (Dwarf *main, Dwarf *alt);
+
 /* Release debugging handling context.  */
 extern int dwarf_end (Dwarf *dwarf);
 
@@ -346,7 +337,7 @@ extern Dwarf_CFI *dwarf_getcfi_elf (Elf *elf);
 extern int dwarf_cfi_end (Dwarf_CFI *cache);
 
 
-/* Return DIE at given offset in .debug_types section.  */
+/* Return DIE at given offset in .debug_info section.  */
 extern Dwarf_Die *dwarf_offdie (Dwarf *dbg, Dwarf_Off offset,
 				Dwarf_Die *result) __nonnull_attribute__ (3);
 
@@ -651,6 +642,22 @@ extern int dwarf_getlocation_addr (Dwarf_Attribute *attr, Dwarf_Addr address,
 				   Dwarf_Op **exprs, size_t *exprlens,
 				   size_t nlocs);
 
+/* Enumerate the locations ranges and descriptions covered by the
+   given attribute.  In the first call OFFSET should be zero and
+   *BASEP need not be initialized.  Returns -1 for errors, zero when
+   there are no more locations to report, or a nonzero OFFSET
+   value to pass to the next call.  Each subsequent call must preserve
+   *BASEP from the prior call.  Successful calls fill in *STARTP and
+   *ENDP with a contiguous address range and *EXPR with a pointer to
+   an array of operations with length *EXPRLEN.  If the attribute
+   describes a single location description and not a location list the
+   first call (with OFFSET zero) will return the location description
+   in *EXPR with *STARTP set to zero and *ENDP set to minus one.  */
+extern ptrdiff_t dwarf_getlocations (Dwarf_Attribute *attr,
+				     ptrdiff_t offset, Dwarf_Addr *basep,
+				     Dwarf_Addr *startp, Dwarf_Addr *endp,
+				     Dwarf_Op **expr, size_t *exprlen);
+
 /* Return the block associated with a DW_OP_implicit_value operation.
    The OP pointer must point into an expression that dwarf_getlocation
    or dwarf_getlocation_addr has returned given the same ATTR.  */
@@ -667,6 +674,29 @@ extern int dwarf_getlocation_implicit_value (Dwarf_Attribute *attr,
 extern int dwarf_getlocation_implicit_pointer (Dwarf_Attribute *attr,
 					       const Dwarf_Op *op,
 					       Dwarf_Attribute *result)
+  __nonnull_attribute__ (2, 3);
+
+/* Return the DIE associated with an operation such as
+   DW_OP_GNU_implicit_pointer, DW_OP_GNU_parameter_ref, DW_OP_GNU_convert,
+   DW_OP_GNU_reinterpret, DW_OP_GNU_const_type, DW_OP_GNU_regval_type or
+   DW_OP_GNU_deref_type.  The OP pointer must point into an expression that
+   dwarf_getlocation or dwarf_getlocation_addr has returned given the same
+   ATTR.  The RESULT is a DIE that expresses a type or value needed by the
+   given OP.  */
+extern int dwarf_getlocation_die (Dwarf_Attribute *attr,
+				  const Dwarf_Op *op,
+				  Dwarf_Die *result)
+  __nonnull_attribute__ (2, 3);
+
+/* Return the attribute expressing a value associated with an operation such
+   as DW_OP_implicit_value, DW_OP_GNU_entry_value or DW_OP_GNU_const_type.
+   The OP pointer must point into an expression that dwarf_getlocation
+   or dwarf_getlocation_addr has returned given the same ATTR.
+   The RESULT is a value expressed by an attribute such as DW_AT_location
+   or DW_AT_const_value.  */
+extern int dwarf_getlocation_attr (Dwarf_Attribute *attr,
+				   const Dwarf_Op *op,
+				   Dwarf_Attribute *result)
   __nonnull_attribute__ (2, 3);
 
 
@@ -729,7 +759,16 @@ extern Dwarf_Arange *dwarf_getarange_addr (Dwarf_Aranges *aranges,
 
 
 
-/* Get functions in CUDIE.  */
+/* Get functions in CUDIE.  The given callback will be called for all
+   defining DW_TAG_subprograms in the CU DIE tree.  If the callback
+   returns DWARF_CB_ABORT the return value can be used as offset argument
+   to resume the function to find all remaining functions (this is not
+   really recommended, since it needs to rewalk the CU DIE tree first till
+   that offset is found again).  If the callback returns DWARF_CB_OK
+   dwarf_getfuncs will not return but keep calling the callback for each
+   function DIE it finds.  Pass zero for offset on the first call to walk
+   the full CU DIE tree.  If no more functions can be found and the callback
+   returned DWARF_CB_OK then the function returns zero.  */
 extern ptrdiff_t dwarf_getfuncs (Dwarf_Die *cudie,
 				 int (*callback) (Dwarf_Die *, void *),
 				 void *arg, ptrdiff_t offset);

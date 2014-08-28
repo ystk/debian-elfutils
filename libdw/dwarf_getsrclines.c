@@ -1,52 +1,31 @@
 /* Return line number information of CU.
-   Copyright (C) 2004-2010 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   Copyright (C) 2004-2010, 2013 Red Hat, Inc.
+   This file is part of elfutils.
    Written by Ulrich Drepper <drepper@redhat.com>, 2004.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of either
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+     * the GNU Lesser General Public License as published by the Free
+       Software Foundation; either version 3 of the License, or (at
+       your option) any later version
+
+   or
+
+     * the GNU General Public License as published by the Free
+       Software Foundation; either version 2 of the License, or (at
+       your option) any later version
+
+   or both in parallel, as here.
+
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   In addition, as a special exception, Red Hat, Inc. gives You the
-   additional right to link the code of Red Hat elfutils with code licensed
-   under any Open Source Initiative certified open source license
-   (http://www.opensource.org/licenses/index.php) which requires the
-   distribution of source code with any binary distribution and to
-   distribute linked combinations of the two.  Non-GPL Code permitted under
-   this exception must only link to the code of Red Hat elfutils through
-   those well defined interfaces identified in the file named EXCEPTION
-   found in the source code files (the "Approved Interfaces").  The files
-   of Non-GPL Code may instantiate templates or use macros or inline
-   functions from the Approved Interfaces without causing the resulting
-   work to be covered by the GNU General Public License.  Only Red Hat,
-   Inc. may make changes or additions to the list of Approved Interfaces.
-   Red Hat's grant of this exception is conditioned upon your not adding
-   any new exceptions.  If you wish to add a new Approved Interface or
-   exception, please contact Red Hat.  You must obey the GNU General Public
-   License in all respects for all of the Red Hat elfutils code and other
-   code used in conjunction with Red Hat elfutils except the Non-GPL Code
-   covered by this exception.  If you modify this file, you may extend this
-   exception to your version of the file, but you are not obligated to do
-   so.  If you do not wish to provide this exception without modification,
-   you must delete this exception statement from your version and license
-   this file solely under the GPL without exception.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received copies of the GNU General Public License and
+   the GNU Lesser General Public License along with this program.  If
+   not, see <http://www.gnu.org/licenses/>.  */
 
 #ifdef HAVE_CONFIG_H
 # include <config.h>
@@ -90,10 +69,20 @@ int
 dwarf_getsrclines (Dwarf_Die *cudie, Dwarf_Lines **lines, size_t *nlines)
 {
   if (unlikely (cudie == NULL
-		|| INTUSE(dwarf_tag) (cudie) != DW_TAG_compile_unit))
+		|| (INTUSE(dwarf_tag) (cudie) != DW_TAG_compile_unit
+		    && INTUSE(dwarf_tag) (cudie) != DW_TAG_partial_unit)))
     return -1;
 
   int res = -1;
+
+  struct linelist *linelist = NULL;
+  unsigned int nlinelist = 0;
+
+  /* If there are a large number of lines don't blow up the stack.
+     Keep track of the last malloced linelist record and free them
+     through the next pointer at the end.  */
+#define MAX_STACK_ALLOC 4096
+  struct linelist *malloc_linelist = NULL;
 
   /* Get the information if it is not already known.  */
   struct Dwarf_CU *const cu = cudie->cu;
@@ -345,20 +334,26 @@ dwarf_getsrclines (Dwarf_Die *cudie, Dwarf_Lines **lines, size_t *nlines)
       }
 
       /* Process the instructions.  */
-      struct linelist *linelist = NULL;
-      unsigned int nlinelist = 0;
 
       /* Adds a new line to the matrix.
 	 We cannot simply define a function because we want to use alloca.  */
 #define NEW_LINE(end_seq)						\
       do {								\
-	if (unlikely (add_new_line (alloca (sizeof (struct linelist)),	\
-				    end_seq)))				\
+	struct linelist *ll = (nlinelist < MAX_STACK_ALLOC		\
+			       ? alloca (sizeof (struct linelist))	\
+			       : malloc (sizeof (struct linelist)));	\
+	if (nlinelist >= MAX_STACK_ALLOC)				\
+	  malloc_linelist = ll;						\
+	if (unlikely (add_new_line (ll, end_seq)))			\
 	  goto invalid_data;						\
       } while (0)
 
       inline bool add_new_line (struct linelist *new_line, bool end_sequence)
       {
+	new_line->next = linelist;
+	linelist = new_line;
+	++nlinelist;
+
 	/* Set the line information.  For some fields we use bitfields,
 	   so we would lose information if the encoded values are too large.
 	   Check just for paranoia, and call the data "invalid" if it
@@ -384,10 +379,6 @@ dwarf_getsrclines (Dwarf_Die *cudie, Dwarf_Lines **lines, size_t *nlines)
 	SET (discriminator);
 
 #undef SET
-
-	new_line->next = linelist;
-	linelist = new_line;
-	++nlinelist;
 
 	return false;
       }
@@ -732,6 +723,12 @@ dwarf_getsrclines (Dwarf_Die *cudie, Dwarf_Lines **lines, size_t *nlines)
 	  cu->lines->info[i].files = files;
 	}
 
+      /* Make sure the highest address for the CU is marked as end_sequence.
+	 This is required by the DWARF spec, but some compilers forget and
+	 dwfl_module_getsrc depends on it.  */
+      if (nlinelist > 0)
+	cu->lines->info[nlinelist - 1].end_sequence = 1;
+
       /* Success.  */
       res = 0;
     }
@@ -745,6 +742,14 @@ dwarf_getsrclines (Dwarf_Die *cudie, Dwarf_Lines **lines, size_t *nlines)
       *nlines = cu->lines->nlines;
     }
  out:
+
+  /* Free malloced line records, if any.  */
+  for (unsigned int i = MAX_STACK_ALLOC; i < nlinelist; i++)
+    {
+      struct linelist *ll = malloc_linelist->next;
+      free (malloc_linelist);
+      malloc_linelist = ll;
+    }
 
   // XXX Eventually: unlocking here.
 

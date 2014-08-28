@@ -1,51 +1,30 @@
 /* Sniff out modules from ELF headers visible in memory segments.
-   Copyright (C) 2008-2010 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   Copyright (C) 2008-2012 Red Hat, Inc.
+   This file is part of elfutils.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of either
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+     * the GNU Lesser General Public License as published by the Free
+       Software Foundation; either version 3 of the License, or (at
+       your option) any later version
+
+   or
+
+     * the GNU General Public License as published by the Free
+       Software Foundation; either version 2 of the License, or (at
+       your option) any later version
+
+   or both in parallel, as here.
+
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   In addition, as a special exception, Red Hat, Inc. gives You the
-   additional right to link the code of Red Hat elfutils with code licensed
-   under any Open Source Initiative certified open source license
-   (http://www.opensource.org/licenses/index.php) which requires the
-   distribution of source code with any binary distribution and to
-   distribute linked combinations of the two.  Non-GPL Code permitted under
-   this exception must only link to the code of Red Hat elfutils through
-   those well defined interfaces identified in the file named EXCEPTION
-   found in the source code files (the "Approved Interfaces").  The files
-   of Non-GPL Code may instantiate templates or use macros or inline
-   functions from the Approved Interfaces without causing the resulting
-   work to be covered by the GNU General Public License.  Only Red Hat,
-   Inc. may make changes or additions to the list of Approved Interfaces.
-   Red Hat's grant of this exception is conditioned upon your not adding
-   any new exceptions.  If you wish to add a new Approved Interface or
-   exception, please contact Red Hat.  You must obey the GNU General Public
-   License in all respects for all of the Red Hat elfutils code and other
-   code used in conjunction with Red Hat elfutils except the Non-GPL Code
-   covered by this exception.  If you modify this file, you may extend this
-   exception to your version of the file, but you are not obligated to do
-   so.  If you do not wish to provide this exception without modification,
-   you must delete this exception statement from your version and license
-   this file solely under the GPL without exception.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received copies of the GNU General Public License and
+   the GNU Lesser General Public License along with this program.  If
+   not, see <http://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 #include "../libelf/libelfP.h"	/* For NOTE_ALIGN.  */
@@ -58,6 +37,7 @@
 #include <sys/param.h>
 #include <alloca.h>
 #include <endian.h>
+#include <unistd.h>
 
 
 /* A good size for the initial read from memory, if it's not too costly.
@@ -104,7 +84,8 @@ dwfl_segment_report_module (Dwfl *dwfl, int ndx, const char *name,
 			    Dwfl_Memory_Callback *memory_callback,
 			    void *memory_callback_arg,
 			    Dwfl_Module_Callback *read_eagerly,
-			    void *read_eagerly_arg)
+			    void *read_eagerly_arg,
+			    const struct r_debug_info *r_debug_info)
 {
   size_t segment = ndx;
 
@@ -155,7 +136,11 @@ dwfl_segment_report_module (Dwfl *dwfl, int ndx, const char *name,
   inline bool read_portion (void **data, size_t *data_size,
 			    GElf_Addr vaddr, size_t filesz)
   {
-    if (vaddr - start + filesz > buffer_available)
+    if (vaddr - start + filesz > buffer_available
+	/* If we're in string mode, then don't consider the buffer we have
+	   sufficient unless it contains the terminator of the string.  */
+	|| (filesz == 0 && memchr (vaddr - start + buffer, '\0',
+				   buffer_available - (vaddr - start)) == NULL))
       {
 	*data = NULL;
 	*data_size = filesz;
@@ -442,13 +427,105 @@ dwfl_segment_report_module (Dwfl *dwfl, int ndx, const char *name,
   /* We must have seen the segment covering offset 0, or else the ELF
      header we read at START was not produced by these program headers.  */
   if (unlikely (!found_bias))
-    return finish ();
+    {
+      free (build_id);
+      return finish ();
+    }
 
   /* Now we know enough to report a module for sure: its bounds.  */
   module_start += bias;
   module_end += bias;
 
   dyn_vaddr += bias;
+
+  /* NAME found from link map has precedence over DT_SONAME possibly read
+     below.  */
+  bool name_is_final = false;
+
+  /* Try to match up DYN_VADDR against L_LD as found in link map.
+     Segments sniffing may guess invalid address as the first read-only memory
+     mapping may not be dumped to the core file (if ELF headers are not dumped)
+     and the ELF header is dumped first with the read/write mapping of the same
+     file at higher addresses.  */
+  if (r_debug_info != NULL)
+    for (const struct r_debug_info_module *module = r_debug_info->module;
+	 module != NULL; module = module->next)
+      if (module_start <= module->l_ld && module->l_ld < module_end)
+	{
+	  /* L_LD read from link map must be right while DYN_VADDR is unsafe.
+	     Therefore subtract DYN_VADDR and add L_LD to get a possibly
+	     corrective displacement for all addresses computed so far.  */
+	  GElf_Addr fixup = module->l_ld - dyn_vaddr;
+	  if ((fixup & (dwfl->segment_align - 1)) == 0
+	      && module_start + fixup <= module->l_ld
+	      && module->l_ld < module_end + fixup)
+	    {
+	      module_start += fixup;
+	      module_end += fixup;
+	      dyn_vaddr += fixup;
+	      bias += fixup;
+	      if (module->name[0] != '\0')
+		{
+		  name = basename (module->name);
+		  name_is_final = true;
+		}
+	      break;
+	    }
+	}
+
+  if (r_debug_info != NULL)
+    {
+      bool skip_this_module = false;
+      for (struct r_debug_info_module *module = r_debug_info->module;
+	   module != NULL; module = module->next)
+	if ((module_end > module->start && module_start < module->end)
+	    || dyn_vaddr == module->l_ld)
+	  {
+	    bool close_elf = false;
+	    if (! module->disk_file_has_build_id && build_id_len > 0)
+	      {
+		/* Module found in segments with build-id is more reliable
+		   than a module found via DT_DEBUG on disk without any
+		   build-id.   */
+		if (module->elf != NULL)
+		  close_elf = true;
+	      }
+	    if (module->elf != NULL
+		&& module->disk_file_has_build_id && build_id_len > 0)
+	      {
+		const void *elf_build_id;
+		ssize_t elf_build_id_len;
+
+		/* If there is a build id in the elf file, check it.  */
+		elf_build_id_len = INTUSE(dwelf_elf_gnu_build_id) (module->elf,
+								&elf_build_id);
+		if (elf_build_id_len > 0)
+		  {
+		    if (build_id_len != (size_t) elf_build_id_len
+			|| memcmp (build_id, elf_build_id, build_id_len) != 0)
+		      close_elf = true;
+		  }
+	      }
+	    if (close_elf)
+	      {
+		elf_end (module->elf);
+		close (module->fd);
+		module->elf = NULL;
+		module->fd = -1;
+	      }
+	    if (module->elf != NULL)
+	      {
+		/* Ignore this found module if it would conflict in address
+		   space with any already existing module of DWFL.  */
+		skip_this_module = true;
+	      }
+	  }
+      if (skip_this_module)
+	{
+	  free (build_id);
+	  return finish ();
+	}
+    }
 
   /* Our return value now says to skip the segments contained
      within the module.  */
@@ -535,7 +612,7 @@ dwfl_segment_report_module (Dwfl *dwfl, int ndx, const char *name,
 
   void *soname = NULL;
   size_t soname_size = 0;
-  if (dynstrsz != 0 && dynstr_vaddr != 0)
+  if (! name_is_final && dynstrsz != 0 && dynstr_vaddr != 0)
     {
       /* We know the bounds of the .dynstr section.
 
@@ -667,6 +744,7 @@ dwfl_segment_report_module (Dwfl *dwfl, int ndx, const char *name,
       mod->main.elf = elf;
       mod->main.vaddr = module_start - bias;
       mod->main.address_sync = module_address_sync;
+      mod->main_bias = bias;
     }
 
   return finish ();

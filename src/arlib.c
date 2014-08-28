@@ -1,27 +1,20 @@
 /* Functions to handle creation of Linux archives.
-   Copyright (C) 2007 Red Hat, Inc.
+   Copyright (C) 2007-2012 Red Hat, Inc.
+   This file is part of elfutils.
    Written by Ulrich Drepper <drepper@redhat.com>, 2007.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   General Public License for more details.
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #ifdef HAVE_CONFIG_H
 # include <config.h>
@@ -61,15 +54,16 @@ arlib_init (void)
   /* Using snprintf here has a problem: the call always wants to add a
      NUL byte.  We could use a trick whereby we specify the target
      buffer size longer than it is and this would not actually fail,
-     since all the fields are consecutive and we fill them in in
+     since all the fields are consecutive and we fill them in
      sequence (i.e., the NUL byte gets overwritten).  But
      _FORTIFY_SOURCE=2 would not let us play these games.  Therefore
      we play it safe.  */
   char tmpbuf[sizeof (ar_hdr.ar_date) + 1];
-  memcpy (ar_hdr.ar_date, tmpbuf,
-	  snprintf (tmpbuf, sizeof (tmpbuf), "%-*lld",
+  int s = snprintf (tmpbuf, sizeof (tmpbuf), "%-*lld",
 		    (int) sizeof (ar_hdr.ar_date),
-		    (long long int) time (NULL)));
+                    (arlib_deterministic_output ? 0
+                     : (long long int) time (NULL)));
+  memcpy (ar_hdr.ar_date, tmpbuf, s);
   assert ((sizeof (struct ar_hdr)  % sizeof (uint32_t)) == 0);
 
   /* Note the string for the ar_uid and ar_gid cases is longer than
@@ -127,10 +121,10 @@ arlib_finalize (void)
 
       symtab.longnames = obstack_finish (&symtab.longnamesob);
 
-      memcpy (&((struct ar_hdr *) symtab.longnames)->ar_size, tmpbuf,
-	      snprintf (tmpbuf, sizeof (tmpbuf), "%-*zu",
+      int s = snprintf (tmpbuf, sizeof (tmpbuf), "%-*zu",
 			(int) sizeof (((struct ar_hdr *) NULL)->ar_size),
-			symtab.longnameslen - sizeof (struct ar_hdr)));
+			symtab.longnameslen - sizeof (struct ar_hdr));
+      memcpy (&((struct ar_hdr *) symtab.longnames)->ar_size, tmpbuf, s);
     }
 
   symtab.symsofflen = obstack_object_size (&symtab.symsoffob);

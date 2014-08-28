@@ -1,51 +1,30 @@
 /* This file defines standard DWARF types, structures, and macros.
-   Copyright (C) 2000-2010 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   Copyright (C) 2000-2011 Red Hat, Inc.
+   This file is part of elfutils.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of either
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+     * the GNU Lesser General Public License as published by the Free
+       Software Foundation; either version 3 of the License, or (at
+       your option) any later version
+
+   or
+
+     * the GNU General Public License as published by the Free
+       Software Foundation; either version 2 of the License, or (at
+       your option) any later version
+
+   or both in parallel, as here.
+
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   In addition, as a special exception, Red Hat, Inc. gives You the
-   additional right to link the code of Red Hat elfutils with code licensed
-   under any Open Source Initiative certified open source license
-   (http://www.opensource.org/licenses/index.php) which requires the
-   distribution of source code with any binary distribution and to
-   distribute linked combinations of the two.  Non-GPL Code permitted under
-   this exception must only link to the code of Red Hat elfutils through
-   those well defined interfaces identified in the file named EXCEPTION
-   found in the source code files (the "Approved Interfaces").  The files
-   of Non-GPL Code may instantiate templates or use macros or inline
-   functions from the Approved Interfaces without causing the resulting
-   work to be covered by the GNU General Public License.  Only Red Hat,
-   Inc. may make changes or additions to the list of Approved Interfaces.
-   Red Hat's grant of this exception is conditioned upon your not adding
-   any new exceptions.  If you wish to add a new Approved Interface or
-   exception, please contact Red Hat.  You must obey the GNU General Public
-   License in all respects for all of the Red Hat elfutils code and other
-   code used in conjunction with Red Hat elfutils except the Non-GPL Code
-   covered by this exception.  If you modify this file, you may extend this
-   exception to your version of the file, but you are not obligated to do
-   so.  If you do not wish to provide this exception without modification,
-   you must delete this exception statement from your version and license
-   this file solely under the GPL without exception.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received copies of the GNU General Public License and
+   the GNU Lesser General Public License along with this program.  If
+   not, see <http://www.gnu.org/licenses/>.  */
 
 #ifndef _DWARF_H
 #define	_DWARF_H 1
@@ -128,6 +107,8 @@ enum
     DW_TAG_GNU_template_template_param = 0x4106,
     DW_TAG_GNU_template_parameter_pack = 0x4107,
     DW_TAG_GNU_formal_parameter_pack = 0x4108,
+    DW_TAG_GNU_call_site = 0x4109,
+    DW_TAG_GNU_call_site_parameter = 0x410a,
 
     DW_TAG_hi_user = 0xffff
   };
@@ -277,6 +258,15 @@ enum
     DW_AT_GNU_shared_locks_required = 0x210e,
     DW_AT_GNU_odr_signature = 0x210f,
     DW_AT_GNU_template_name = 0x2110,
+    DW_AT_GNU_call_site_value = 0x2111,
+    DW_AT_GNU_call_site_data_value = 0x2112,
+    DW_AT_GNU_call_site_target = 0x2113,
+    DW_AT_GNU_call_site_target_clobbered = 0x2114,
+    DW_AT_GNU_tail_call = 0x2115,
+    DW_AT_GNU_all_tail_call_sites = 0x2116,
+    DW_AT_GNU_all_call_sites = 0x2117,
+    DW_AT_GNU_all_source_call_sites = 0x2118,
+    DW_AT_GNU_macros = 0x2119,
 
     DW_AT_hi_user = 0x3fff
   };
@@ -309,7 +299,10 @@ enum
     DW_FORM_sec_offset = 0x17,
     DW_FORM_exprloc = 0x18,
     DW_FORM_flag_present = 0x19,
-    DW_FORM_ref_sig8 = 0x20
+    DW_FORM_ref_sig8 = 0x20,
+
+    DW_FORM_GNU_ref_alt = 0x1f20, /* offset in alternate .debuginfo.  */
+    DW_FORM_GNU_strp_alt = 0x1f21 /* offset in alternate .debug_str. */
   };
 
 
@@ -476,6 +469,13 @@ enum
     DW_OP_GNU_uninit = 0xf0,
     DW_OP_GNU_encoded_addr = 0xf1,
     DW_OP_GNU_implicit_pointer = 0xf2,
+    DW_OP_GNU_entry_value = 0xf3,
+    DW_OP_GNU_const_type = 0xf4,
+    DW_OP_GNU_regval_type = 0xf5,
+    DW_OP_GNU_deref_type = 0xf6,
+    DW_OP_GNU_convert = 0xf7,
+    DW_OP_GNU_reinterpret = 0xf9,
+    DW_OP_GNU_parameter_ref = 0xfa,
 
     DW_OP_lo_user = 0xe0,	/* Implementation-defined range start.  */
     DW_OP_hi_user = 0xff	/* Implementation-defined range end.  */
@@ -501,6 +501,7 @@ enum
     DW_ATE_signed_fixed = 0xd,
     DW_ATE_unsigned_fixed = 0xe,
     DW_ATE_decimal_float = 0xf,
+    DW_ATE_UTF = 0x10,
 
     DW_ATE_lo_user = 0x80,
     DW_ATE_hi_user = 0xff
@@ -575,15 +576,15 @@ enum
     DW_LANG_Ada95 = 0x000d,	     /* ISO Ada:1995 */
     DW_LANG_Fortran95 = 0x000e,	     /* ISO Fortran 95 */
     DW_LANG_PL1 = 0x000f,	     /* ISO PL/1:1976 */
-    DW_LANG_Objc = 0x0010,	     /* Objective-C */
+    DW_LANG_ObjC = 0x0010,	     /* Objective-C */
     DW_LANG_ObjC_plus_plus = 0x0011, /* Objective-C++ */
     DW_LANG_UPC = 0x0012,	     /* Unified Parallel C */
     DW_LANG_D = 0x0013,		     /* D */
     DW_LANG_Python = 0x0014,	     /* Python */
-    DW_LANG_Go = 0x0016,	     /* Google's Go (provisionally in DWARF5) */
+    DW_LANG_Go = 0x0016,	     /* Go */
 
     DW_LANG_lo_user = 0x8000,
-    DW_LANG_Mips_Assembler = 0x8001,
+    DW_LANG_Mips_Assembler = 0x8001, /* Assembler */
     DW_LANG_hi_user = 0xffff
   };
 
@@ -674,6 +675,21 @@ enum
     DW_MACINFO_start_file = 3,
     DW_MACINFO_end_file = 4,
     DW_MACINFO_vendor_ext = 255
+  };
+
+
+/* DWARF debug_macro type encodings.  GNU/DWARF5 extension.  */
+enum
+  {
+    DW_MACRO_GNU_define = 0x01,
+    DW_MACRO_GNU_undef = 0x02,
+    DW_MACRO_GNU_start_file = 0x03,
+    DW_MACRO_GNU_end_file = 0x04,
+    DW_MACRO_GNU_define_indirect = 0x05,
+    DW_MACRO_GNU_undef_indirect = 0x06,
+    DW_MACRO_GNU_transparent_include = 0x07,
+    DW_MACRO_GNU_lo_user = 0xe0,
+    DW_MACRO_GNU_hi_user = 0xff
   };
 
 

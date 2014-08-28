@@ -1,28 +1,20 @@
 /* Pedantic checking of ELF files compliance with gABI/psABI spec.
-   Copyright (C) 2001-2011 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   Copyright (C) 2001-2014 Red Hat, Inc.
+   This file is part of elfutils.
    Written by Ulrich Drepper <drepper@redhat.com>, 2001.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   General Public License for more details.
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #ifdef HAVE_CONFIG_H
 # include <config.h>
@@ -130,6 +122,10 @@ static uint32_t shstrndx;
 
 /* Array to count references in section groups.  */
 static int *scnref;
+
+/* Numbers of sections and program headers.  */
+static unsigned int shnum;
+static unsigned int phnum;
 
 
 int
@@ -240,7 +236,7 @@ print_version (FILE *stream, struct argp_state *state __attribute__ ((unused)))
 Copyright (C) %s Red Hat, Inc.\n\
 This is free software; see the source for copying conditions.  There is NO\n\
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\
-"), "2009");
+"), "2012");
   fprintf (stream, gettext ("Written by %s.\n"), "Ulrich Drepper");
 }
 
@@ -319,10 +315,19 @@ section_name (Ebl *ebl, int idx)
 {
   GElf_Shdr shdr_mem;
   GElf_Shdr *shdr;
+  const char *ret;
+
+  if ((unsigned int) idx > shnum)
+    return "<invalid>";
 
   shdr = gelf_getshdr (elf_getscn (ebl->elf, idx), &shdr_mem);
+  if (shdr == NULL)
+    return "<invalid>";
 
-  return elf_strptr (ebl->elf, shstrndx, shdr->sh_name);
+  ret = elf_strptr (ebl->elf, shstrndx, shdr->sh_name);
+  if (ret == NULL)
+    return "<invalid>";
+  return ret;
 }
 
 
@@ -338,15 +343,11 @@ static const int valid_e_machine[] =
     EM_68HC16, EM_68HC11, EM_68HC08, EM_68HC05, EM_SVX, EM_ST19, EM_VAX,
     EM_CRIS, EM_JAVELIN, EM_FIREPATH, EM_ZSP, EM_MMIX, EM_HUANY, EM_PRISM,
     EM_AVR, EM_FR30, EM_D10V, EM_D30V, EM_V850, EM_M32R, EM_MN10300,
-    EM_MN10200, EM_PJ, EM_OPENRISC, EM_ARC_A5, EM_XTENSA, EM_ALPHA
+    EM_MN10200, EM_PJ, EM_OPENRISC, EM_ARC_A5, EM_XTENSA, EM_ALPHA,
+    EM_TILEGX, EM_TILEPRO, EM_AARCH64
   };
 #define nvalid_e_machine \
   (sizeof (valid_e_machine) / sizeof (valid_e_machine[0]))
-
-
-/* Numbers of sections and program headers.  */
-static unsigned int shnum;
-static unsigned int phnum;
 
 
 static void
@@ -632,7 +633,8 @@ section [%2d] '%s': symbol table cannot have more than one extended index sectio
 	  }
       }
 
-  if (shdr->sh_entsize != gelf_fsize (ebl->elf, ELF_T_SYM, 1, EV_CURRENT))
+  size_t sh_entsize = gelf_fsize (ebl->elf, ELF_T_SYM, 1, EV_CURRENT);
+  if (shdr->sh_entsize != sh_entsize)
     ERROR (gettext ("\
 section [%2u] '%s': entry size is does not match ElfXX_Sym\n"),
 	   idx, section_name (ebl, idx));
@@ -670,7 +672,7 @@ section [%2d] '%s': XINDEX for zeroth entry not zero\n"),
 	       xndxscnidx, section_name (ebl, xndxscnidx));
     }
 
-  for (size_t cnt = 1; cnt < shdr->sh_size / shdr->sh_entsize; ++cnt)
+  for (size_t cnt = 1; cnt < shdr->sh_size / sh_entsize; ++cnt)
     {
       sym = gelf_getsymshndx (data, xndxdata, cnt, &sym_mem, &xndx);
       if (sym == NULL)
@@ -690,7 +692,8 @@ section [%2d] '%s': symbol %zu: invalid name value\n"),
       else
 	{
 	  name = elf_strptr (ebl->elf, shdr->sh_link, sym->st_name);
-	  assert (name != NULL);
+	  assert (name != NULL
+		  || strshdr->sh_type != SHT_STRTAB);
 	}
 
       if (sym->st_shndx == SHN_XINDEX)
@@ -774,15 +777,23 @@ section [%2d] '%s': symbol %zu: function in COMMON section is nonsense\n"),
 			{
 			  /* GNU ld has severe bugs.  When it decides to remove
 			     empty sections it leaves symbols referencing them
-			     behind.  These are symbols in .symtab.  */
+			     behind.  These are symbols in .symtab or .dynsym
+			     and for the named symbols have zero size.  See
+			     sourceware PR13621.  */
 			  if (!gnuld
-			      || strcmp (section_name (ebl, idx), ".symtab")
+			      || (strcmp (section_name (ebl, idx), ".symtab")
+			          && strcmp (section_name (ebl, idx),
+					     ".dynsym"))
+			      || sym->st_size != 0
 			      || (strcmp (name, "__preinit_array_start") != 0
 				  && strcmp (name, "__preinit_array_end") != 0
 				  && strcmp (name, "__init_array_start") != 0
 				  && strcmp (name, "__init_array_end") != 0
 				  && strcmp (name, "__fini_array_start") != 0
-				  && strcmp (name, "__fini_array_end") != 0))
+				  && strcmp (name, "__fini_array_end") != 0
+				  && strcmp (name, "__bss_start") != 0
+				  && strcmp (name, "__bss_start__") != 0
+				  && strcmp (name, "__TMC_END__") != 0))
 			    ERROR (gettext ("\
 section [%2d] '%s': symbol %zu: st_value out of bounds\n"),
 				   idx, section_name (ebl, idx), cnt);
@@ -1011,7 +1022,7 @@ section [%2d] '%s': _DYNAMIC symbol size %" PRIu64 " does not match dynamic segm
 	ERROR (gettext ("\
 section [%2d] '%s': symbol %zu: symbol in dynamic symbol table with non-default visibility\n"),
 	       idx, section_name (ebl, idx), cnt);
-      if ((sym->st_other ^ GELF_ST_VISIBILITY (sym->st_other)) != 0)
+      if (! ebl_check_st_other_bits (ebl, sym->st_other))
 	ERROR (gettext ("\
 section [%2d] '%s': symbol %zu: unknown bit set in st_other\n"),
 	       idx, section_name (ebl, idx), cnt);
@@ -1039,9 +1050,11 @@ is_rel_dyn (Ebl *ebl, const GElf_Ehdr *ehdr, int idx, const GElf_Shdr *shdr,
     {
       GElf_Shdr rcshdr_mem;
       const GElf_Shdr *rcshdr = gelf_getshdr (scn, &rcshdr_mem);
-      assert (rcshdr != NULL);
 
-      if (rcshdr->sh_type == SHT_DYNAMIC)
+      if (rcshdr == NULL)
+	break;
+
+      if (rcshdr->sh_type == SHT_DYNAMIC && rcshdr->sh_entsize)
 	{
 	  /* Found the dynamic section.  Look through it.  */
 	  Elf_Data *d = elf_getdata (scn, NULL);
@@ -1051,7 +1064,9 @@ is_rel_dyn (Ebl *ebl, const GElf_Ehdr *ehdr, int idx, const GElf_Shdr *shdr,
 	    {
 	      GElf_Dyn dyn_mem;
 	      GElf_Dyn *dyn = gelf_getdyn (d, cnt, &dyn_mem);
-	      assert (dyn != NULL);
+
+	      if (dyn == NULL)
+		break;
 
 	      if (dyn->d_tag == DT_RELCOUNT)
 		{
@@ -1065,7 +1080,9 @@ section [%2d] '%s': DT_RELCOUNT used for this RELA section\n"),
 		      /* Does the number specified number of relative
 			 relocations exceed the total number of
 			 relocations?  */
-		      if (dyn->d_un.d_val > shdr->sh_size / shdr->sh_entsize)
+		      if (shdr->sh_entsize != 0
+			  && dyn->d_un.d_val > (shdr->sh_size
+						/ shdr->sh_entsize))
 			ERROR (gettext ("\
 section [%2d] '%s': DT_RELCOUNT value %d too high for this section\n"),
 			       idx, section_name (ebl, idx),
@@ -1199,8 +1216,7 @@ check_reloc_shdr (Ebl *ebl, const GElf_Ehdr *ehdr, const GElf_Shdr *shdr,
 				 destshdr_memp);
       if (*destshdrp != NULL)
 	{
-	  if((*destshdrp)->sh_type != SHT_PROGBITS
-	     && (*destshdrp)->sh_type != SHT_NOBITS)
+	  if(! ebl_check_reloc_target_type (ebl, (*destshdrp)->sh_type))
 	    {
 	      reldyn = is_rel_dyn (ebl, ehdr, idx, shdr, true);
 	      if (!reldyn)
@@ -1225,7 +1241,8 @@ section [%2d] '%s': no relocations for merge-able sections possible\n"),
 	}
     }
 
-  if (shdr->sh_entsize != gelf_fsize (ebl->elf, reltype, 1, EV_CURRENT))
+  size_t sh_entsize = gelf_fsize (ebl->elf, reltype, 1, EV_CURRENT);
+  if (shdr->sh_entsize != sh_entsize)
     ERROR (gettext (reltype == ELF_T_RELA ? "\
 section [%2d] '%s': section entry size does not match ElfXX_Rela\n" : "\
 section [%2d] '%s': section entry size does not match ElfXX_Rel\n"),
@@ -1448,7 +1465,8 @@ check_rela (Ebl *ebl, GElf_Ehdr *ehdr, GElf_Shdr *shdr, int idx)
   Elf_Data *symdata = elf_getdata (symscn, NULL);
   enum load_state state = state_undecided;
 
-  for (size_t cnt = 0; cnt < shdr->sh_size / shdr->sh_entsize; ++cnt)
+  size_t sh_entsize = gelf_fsize (ebl->elf, ELF_T_RELA, 1, EV_CURRENT);
+  for (size_t cnt = 0; cnt < shdr->sh_size / sh_entsize; ++cnt)
     {
       GElf_Rela rela_mem;
       GElf_Rela *rela = gelf_getrela (data, cnt, &rela_mem);
@@ -1498,7 +1516,8 @@ check_rel (Ebl *ebl, GElf_Ehdr *ehdr, GElf_Shdr *shdr, int idx)
   Elf_Data *symdata = elf_getdata (symscn, NULL);
   enum load_state state = state_undecided;
 
-  for (size_t cnt = 0; cnt < shdr->sh_size / shdr->sh_entsize; ++cnt)
+  size_t sh_entsize = gelf_fsize (ebl->elf, ELF_T_REL, 1, EV_CURRENT);
+  for (size_t cnt = 0; cnt < shdr->sh_size / sh_entsize; ++cnt)
     {
       GElf_Rel rel_mem;
       GElf_Rel *rel = gelf_getrel (data, cnt, &rel_mem);
@@ -1597,7 +1616,8 @@ section [%2d] '%s': referenced as string table for section [%2d] '%s' but type i
 	   shdr->sh_link, section_name (ebl, shdr->sh_link),
 	   idx, section_name (ebl, idx));
 
-  if (shdr->sh_entsize != gelf_fsize (ebl->elf, ELF_T_DYN, 1, EV_CURRENT))
+  size_t sh_entsize = gelf_fsize (ebl->elf, ELF_T_DYN, 1, EV_CURRENT);
+  if (shdr->sh_entsize != sh_entsize)
     ERROR (gettext ("\
 section [%2d] '%s': section entry size does not match ElfXX_Dyn\n"),
 	   idx, section_name (ebl, idx));
@@ -1607,7 +1627,7 @@ section [%2d] '%s': section entry size does not match ElfXX_Dyn\n"),
 	   idx, section_name (ebl, idx));
 
   bool non_null_warned = false;
-  for (cnt = 0; cnt < shdr->sh_size / shdr->sh_entsize; ++cnt)
+  for (cnt = 0; cnt < shdr->sh_size / sh_entsize; ++cnt)
     {
       GElf_Dyn dyn_mem;
       GElf_Dyn *dyn = gelf_getdyn (data, cnt, &dyn_mem);
@@ -1879,6 +1899,8 @@ section [%2d] '%s': entry size does not match Elf32_Word\n"),
 	   idx, section_name (ebl, idx));
 
   if (symshdr != NULL
+      && shdr->sh_entsize
+      && symshdr->sh_entsize
       && (shdr->sh_size / shdr->sh_entsize
 	  < symshdr->sh_size / symshdr->sh_entsize))
     ERROR (gettext ("\
@@ -1905,6 +1927,12 @@ section [%2d] '%s': extended section index in section [%2zu] '%s' refers to same
     }
 
   Elf_Data *data = elf_getdata (elf_getscn (ebl->elf, idx), NULL);
+  if (data == NULL)
+    {
+      ERROR (gettext ("section [%2d] '%s': cannot get section data\n"),
+	     idx, section_name (ebl, idx));
+      return;
+    }
 
   if (*((Elf32_Word *) data->d_buf) != 0)
     ERROR (gettext ("symbol 0 should have zero extended section index\n"));
@@ -1947,7 +1975,7 @@ section [%2d] '%s': hash table section is too small (is %ld, expected %ld)\n"),
 
   size_t maxidx = nchain;
 
-  if (symshdr != NULL)
+  if (symshdr != NULL && symshdr->sh_entsize != 0)
     {
       size_t symsize = symshdr->sh_size / symshdr->sh_entsize;
 
@@ -1958,18 +1986,28 @@ section [%2d] '%s': hash table section is too small (is %ld, expected %ld)\n"),
       maxidx = symsize;
     }
 
+  Elf32_Word *buf = (Elf32_Word *) data->d_buf;
+  Elf32_Word *end = (Elf32_Word *) ((char *) data->d_buf + shdr->sh_size);
   size_t cnt;
   for (cnt = 2; cnt < 2 + nbucket; ++cnt)
-    if (((Elf32_Word *) data->d_buf)[cnt] >= maxidx)
+    {
+      if (buf + cnt >= end)
+	break;
+      else if (buf[cnt] >= maxidx)
       ERROR (gettext ("\
 section [%2d] '%s': hash bucket reference %zu out of bounds\n"),
 	     idx, section_name (ebl, idx), cnt - 2);
+    }
 
   for (; cnt < 2 + nbucket + nchain; ++cnt)
-    if (((Elf32_Word *) data->d_buf)[cnt] >= maxidx)
+    {
+      if (buf + cnt >= end)
+	break;
+      else if (buf[cnt] >= maxidx)
       ERROR (gettext ("\
 section [%2d] '%s': hash chain reference %zu out of bounds\n"),
 	     idx, section_name (ebl, idx), cnt - 2 - nbucket);
+    }
 }
 
 
@@ -1999,18 +2037,28 @@ section [%2d] '%s': hash table section is too small (is %ld, expected %ld)\n"),
       maxidx = symsize;
     }
 
+  Elf64_Xword *buf = (Elf64_Xword *) data->d_buf;
+  Elf64_Xword *end = (Elf64_Xword *) ((char *) data->d_buf + shdr->sh_size);
   size_t cnt;
   for (cnt = 2; cnt < 2 + nbucket; ++cnt)
-    if (((Elf64_Xword *) data->d_buf)[cnt] >= maxidx)
+    {
+      if (buf + cnt >= end)
+	break;
+      else if (buf[cnt] >= maxidx)
       ERROR (gettext ("\
 section [%2d] '%s': hash bucket reference %zu out of bounds\n"),
 	     idx, section_name (ebl, idx), cnt - 2);
+    }
 
   for (; cnt < 2 + nbucket + nchain; ++cnt)
-    if (((Elf64_Xword *) data->d_buf)[cnt] >= maxidx)
+    {
+      if (buf + cnt >= end)
+	break;
+      else if (buf[cnt] >= maxidx)
       ERROR (gettext ("\
 section [%2d] '%s': hash chain reference %" PRIu64 " out of bounds\n"),
-	     idx, section_name (ebl, idx), (uint64_t) (cnt - 2 - nbucket));
+	       idx, section_name (ebl, idx), (uint64_t) cnt - 2 - nbucket);
+    }
 }
 
 
@@ -2035,7 +2083,7 @@ section [%2d] '%s': bitmask size not power of 2: %u\n"),
   if (shdr->sh_size < (4 + bitmask_words + nbuckets) * sizeof (Elf32_Word))
     {
       ERROR (gettext ("\
-section [%2d] '%s': hash table section is too small (is %ld, expected at least%ld)\n"),
+section [%2d] '%s': hash table section is too small (is %ld, expected at least %ld)\n"),
 	     idx, section_name (ebl, idx), (long int) shdr->sh_size,
 	     (long int) ((4 + bitmask_words + nbuckets) * sizeof (Elf32_Word)));
       return;
@@ -2707,8 +2755,9 @@ section [%2d] '%s' refers in sh_link to section [%2d] '%s' which is no dynamic s
 
   /* The number of elements in the version symbol table must be the
      same as the number of symbols.  */
-  if (shdr->sh_size / shdr->sh_entsize
-      != symshdr->sh_size / symshdr->sh_entsize)
+  if (shdr->sh_entsize && symshdr->sh_entsize
+      && (shdr->sh_size / shdr->sh_entsize
+	  != symshdr->sh_size / symshdr->sh_entsize))
     ERROR (gettext ("\
 section [%2d] '%s' has different number of entries than symbol table [%2d] '%s'\n"),
 	   idx, section_name (ebl, idx),
@@ -3357,8 +3406,8 @@ static const struct
     { ".note", 6, SHT_NOTE, atleast, 0, SHF_ALLOC },
     { ".plt", 5, SHT_PROGBITS, unused, 0, 0 }, // XXX more tests
     { ".preinit_array", 15, SHT_PREINIT_ARRAY, exact, SHF_ALLOC | SHF_WRITE, 0 },
-    { ".rela", 5, SHT_RELA, atleast, 0, SHF_ALLOC }, // XXX more tests
-    { ".rel", 4, SHT_REL, atleast, 0, SHF_ALLOC }, // XXX more tests
+    { ".rela", 5, SHT_RELA, atleast, 0, SHF_ALLOC | SHF_INFO_LINK }, // XXX more tests
+    { ".rel", 4, SHT_REL, atleast, 0, SHF_ALLOC | SHF_INFO_LINK }, // XXX more tests
     { ".rodata", 8, SHT_PROGBITS, atleast, SHF_ALLOC, SHF_MERGE | SHF_STRINGS },
     { ".rodata1", 9, SHT_PROGBITS, atleast, SHF_ALLOC, SHF_MERGE | SHF_STRINGS },
     { ".shstrtab", 10, SHT_STRTAB, exact, 0, 0 },
@@ -3716,8 +3765,10 @@ section [%2zu] '%s' is both executable and writable\n"),
 		    || (phdr->p_type == PT_TLS
 			&& (shdr->sh_flags & SHF_TLS) != 0))
 		&& phdr->p_offset <= shdr->sh_offset
-		&& (phdr->p_offset + phdr->p_filesz > shdr->sh_offset
-		    || (phdr->p_offset + phdr->p_memsz > shdr->sh_offset
+		&& ((shdr->sh_offset - phdr->p_offset <= phdr->p_filesz
+		     && (shdr->sh_offset - phdr->p_offset < phdr->p_filesz
+			 || shdr->sh_size == 0))
+		    || (shdr->sh_offset - phdr->p_offset < phdr->p_memsz
 			&& shdr->sh_type == SHT_NOBITS)))
 	      {
 		/* Found the segment.  */

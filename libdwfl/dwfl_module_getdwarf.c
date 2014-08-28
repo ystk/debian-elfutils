@@ -1,86 +1,79 @@
 /* Find debugging and symbol information for a module in libdwfl.
-   Copyright (C) 2005-2011 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   Copyright (C) 2005-2012, 2014 Red Hat, Inc.
+   This file is part of elfutils.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of either
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+     * the GNU Lesser General Public License as published by the Free
+       Software Foundation; either version 3 of the License, or (at
+       your option) any later version
+
+   or
+
+     * the GNU General Public License as published by the Free
+       Software Foundation; either version 2 of the License, or (at
+       your option) any later version
+
+   or both in parallel, as here.
+
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   In addition, as a special exception, Red Hat, Inc. gives You the
-   additional right to link the code of Red Hat elfutils with code licensed
-   under any Open Source Initiative certified open source license
-   (http://www.opensource.org/licenses/index.php) which requires the
-   distribution of source code with any binary distribution and to
-   distribute linked combinations of the two.  Non-GPL Code permitted under
-   this exception must only link to the code of Red Hat elfutils through
-   those well defined interfaces identified in the file named EXCEPTION
-   found in the source code files (the "Approved Interfaces").  The files
-   of Non-GPL Code may instantiate templates or use macros or inline
-   functions from the Approved Interfaces without causing the resulting
-   work to be covered by the GNU General Public License.  Only Red Hat,
-   Inc. may make changes or additions to the list of Approved Interfaces.
-   Red Hat's grant of this exception is conditioned upon your not adding
-   any new exceptions.  If you wish to add a new Approved Interface or
-   exception, please contact Red Hat.  You must obey the GNU General Public
-   License in all respects for all of the Red Hat elfutils code and other
-   code used in conjunction with Red Hat elfutils except the Non-GPL Code
-   covered by this exception.  If you modify this file, you may extend this
-   exception to your version of the file, but you are not obligated to do
-   so.  If you do not wish to provide this exception without modification,
-   you must delete this exception statement from your version and license
-   this file solely under the GPL without exception.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received copies of the GNU General Public License and
+   the GNU Lesser General Public License along with this program.  If
+   not, see <http://www.gnu.org/licenses/>.  */
 
 #include "libdwflP.h"
+#include <inttypes.h>
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 #include "../libdw/libdwP.h"	/* DWARF_E_* values are here.  */
+#include "../libelf/libelfP.h"
 
+static inline Dwfl_Error
+open_elf_file (Elf **elf, int *fd, char **name)
+{
+  if (*elf == NULL)
+    {
+      /* CBFAIL uses errno if it's set, so clear it first in case we don't
+	 set it with an open failure below.  */
+      errno = 0;
+
+      /* If there was a pre-primed file name left that the callback left
+	 behind, try to open that file name.  */
+      if (*fd < 0 && *name != NULL)
+	*fd = TEMP_FAILURE_RETRY (open64 (*name, O_RDONLY));
+
+      if (*fd < 0)
+	return CBFAIL;
+
+      return __libdw_open_file (fd, elf, true, false);
+    }
+  else if (unlikely (elf_kind (*elf) != ELF_K_ELF))
+    {
+      elf_end (*elf);
+      *elf = NULL;
+      close (*fd);
+      *fd = -1;
+      return DWFL_E_BADELF;
+    }
+
+  /* Elf file already open and looks fine.  */
+  return DWFL_E_NOERROR;
+}
 
 /* Open libelf FILE->fd and compute the load base of ELF as loaded in MOD.
    When we return success, FILE->elf and FILE->vaddr are set up.  */
 static inline Dwfl_Error
 open_elf (Dwfl_Module *mod, struct dwfl_file *file)
 {
-  if (file->elf == NULL)
-    {
-      /* If there was a pre-primed file name left that the callback left
-	 behind, try to open that file name.  */
-      if (file->fd < 0 && file->name != NULL)
-	file->fd = TEMP_FAILURE_RETRY (open64 (file->name, O_RDONLY));
-
-      if (file->fd < 0)
-	return CBFAIL;
-
-      Dwfl_Error error = __libdw_open_file (&file->fd, &file->elf, true, false);
-      if (error != DWFL_E_NOERROR)
-	return error;
-    }
-  else if (unlikely (elf_kind (file->elf) != ELF_K_ELF))
-    {
-      elf_end (file->elf);
-      file->elf = NULL;
-      close (file->fd);
-      file->fd = -1;
-      return DWFL_E_BADELF;
-    }
+  Dwfl_Error error = open_elf_file (&file->elf, &file->fd, &file->name);
+  if (error != DWFL_E_NOERROR)
+    return error;
 
   GElf_Ehdr ehdr_mem, *ehdr = gelf_getehdr (file->elf, &ehdr_mem);
   if (ehdr == NULL)
@@ -93,7 +86,7 @@ open_elf (Dwfl_Module *mod, struct dwfl_file *file)
       return DWFL_E (LIBELF, elf_errno ());
     }
 
-  if (mod->e_type != ET_REL)
+  if (ehdr->e_type != ET_REL)
     {
       /* In any non-ET_REL file, we compute the "synchronization address".
 
@@ -147,13 +140,63 @@ open_elf (Dwfl_Module *mod, struct dwfl_file *file)
 	}
     }
 
-  mod->e_type = ehdr->e_type;
+  /* We only want to set the module e_type explictly once, derived from
+     the main ELF file.  (It might be changed for the kernel, because
+     that is special - see below.)  open_elf is always called first for
+     the main ELF file, because both find_dw and find_symtab call
+     __libdwfl_getelf first to open the main file.  So don't let debug
+     or aux files override the module e_type.  The kernel heuristic
+     below could otherwise trigger for non-kernel/non-main files, since
+     their phdrs might not match the actual load addresses.  */
+  if (file == &mod->main)
+    {
+      mod->e_type = ehdr->e_type;
 
-  /* Relocatable Linux kernels are ET_EXEC but act like ET_DYN.  */
-  if (mod->e_type == ET_EXEC && file->vaddr != mod->low_addr)
-    mod->e_type = ET_DYN;
+      /* Relocatable Linux kernels are ET_EXEC but act like ET_DYN.  */
+      if (mod->e_type == ET_EXEC && file->vaddr != mod->low_addr)
+	mod->e_type = ET_DYN;
+    }
+  else
+    assert (mod->main.elf != NULL);
 
   return DWFL_E_NOERROR;
+}
+
+/* We have an authoritative build ID for this module MOD, so don't use
+   a file by name that doesn't match that ID.  */
+static void
+mod_verify_build_id (Dwfl_Module *mod)
+{
+  assert (mod->build_id_len > 0);
+
+  switch (__builtin_expect (__libdwfl_find_build_id (mod, false,
+						     mod->main.elf), 2))
+    {
+    case 2:
+      /* Build ID matches as it should. */
+      return;
+
+    case -1:			/* ELF error.  */
+      mod->elferr = INTUSE(dwfl_errno) ();
+      break;
+
+    case 0:			/* File has no build ID note.  */
+    case 1:			/* FIle has a build ID that does not match.  */
+      mod->elferr = DWFL_E_WRONG_ID_ELF;
+      break;
+
+    default:
+      abort ();
+    }
+
+  /* We get here when it was the right ELF file.  Clear it out.  */
+  elf_end (mod->main.elf);
+  mod->main.elf = NULL;
+  if (mod->main.fd >= 0)
+    {
+      close (mod->main.fd);
+      mod->main.fd = -1;
+    }
 }
 
 /* Find the main ELF file for this module and open libelf on it.
@@ -183,103 +226,9 @@ __libdwfl_getelf (Dwfl_Module *mod)
       mod->build_id_len = 0;
     }
   else if (fallback)
-    {
-      /* We have an authoritative build ID for this module, so
-	 don't use a file by name that doesn't match that ID.  */
-
-      assert (mod->build_id_len > 0);
-
-      switch (__builtin_expect (__libdwfl_find_build_id (mod, false,
-							 mod->main.elf), 2))
-	{
-	case 2:
-	  /* Build ID matches as it should. */
-	  return;
-
-	case -1:			/* ELF error.  */
-	  mod->elferr = INTUSE(dwfl_errno) ();
-	  break;
-
-	case 0:			/* File has no build ID note.  */
-	case 1:			/* FIle has a build ID that does not match.  */
-	  mod->elferr = DWFL_E_WRONG_ID_ELF;
-	  break;
-
-	default:
-	  abort ();
-	}
-
-      /* We get here when it was the right ELF file.  Clear it out.  */
-      elf_end (mod->main.elf);
-      mod->main.elf = NULL;
-      if (mod->main.fd >= 0)
-	{
-	  close (mod->main.fd);
-	  mod->main.fd = -1;
-	}
-    }
+    mod_verify_build_id (mod);
 
   mod->main_bias = mod->e_type == ET_REL ? 0 : mod->low_addr - mod->main.vaddr;
-}
-
-/* Search an ELF file for a ".gnu_debuglink" section.  */
-static const char *
-find_debuglink (Elf *elf, GElf_Word *crc)
-{
-  size_t shstrndx;
-  if (elf_getshdrstrndx (elf, &shstrndx) < 0)
-    return NULL;
-
-  Elf_Scn *scn = NULL;
-  while ((scn = elf_nextscn (elf, scn)) != NULL)
-    {
-      GElf_Shdr shdr_mem;
-      GElf_Shdr *shdr = gelf_getshdr (scn, &shdr_mem);
-      if (shdr == NULL)
-	return NULL;
-
-      const char *name = elf_strptr (elf, shstrndx, shdr->sh_name);
-      if (name == NULL)
-	return NULL;
-
-      if (!strcmp (name, ".gnu_debuglink"))
-	break;
-    }
-
-  if (scn == NULL)
-    return NULL;
-
-  /* Found the .gnu_debuglink section.  Extract its contents.  */
-  Elf_Data *rawdata = elf_rawdata (scn, NULL);
-  if (rawdata == NULL)
-    return NULL;
-
-  Elf_Data crcdata =
-    {
-      .d_type = ELF_T_WORD,
-      .d_buf = crc,
-      .d_size = sizeof *crc,
-      .d_version = EV_CURRENT,
-    };
-  Elf_Data conv =
-    {
-      .d_type = ELF_T_WORD,
-      .d_buf = rawdata->d_buf + rawdata->d_size - sizeof *crc,
-      .d_size = sizeof *crc,
-      .d_version = EV_CURRENT,
-    };
-
-  GElf_Ehdr ehdr_mem;
-  GElf_Ehdr *ehdr = gelf_getehdr (elf, &ehdr_mem);
-  if (ehdr == NULL)
-    return NULL;
-
-  Elf_Data *d = gelf_xlatetom (elf, &crcdata, &conv, ehdr->e_ident[EI_DATA]);
-  if (d == NULL)
-    return NULL;
-  assert (d == &crcdata);
-
-  return rawdata->d_buf;
 }
 
 /* If the main file might have been prelinked, then we need to
@@ -299,7 +248,7 @@ find_debuglink (Elf *elf, GElf_Word *crc)
    looked like before prelink juggled them--when they still had a
    direct correspondence to the debug file.  */
 static Dwfl_Error
-find_prelink_address_sync (Dwfl_Module *mod)
+find_prelink_address_sync (Dwfl_Module *mod, struct dwfl_file *file)
 {
   /* The magic section is only identified by name.  */
   size_t shstrndx;
@@ -526,8 +475,8 @@ find_prelink_address_sync (Dwfl_Module *mod)
 	  consider_shdr (undo_interp, shdr.s64[i].sh_type, shdr.s64[i].sh_flags,
 			 shdr.s64[i].sh_addr, shdr.s64[i].sh_size);
 
-      if (highest > mod->debug.vaddr)
-	mod->debug.address_sync = highest;
+      if (highest > file->vaddr)
+	file->address_sync = highest;
       else
 	return DWFL_E_BAD_PRELINK;
     }
@@ -544,7 +493,9 @@ find_debuginfo (Dwfl_Module *mod)
     return DWFL_E_NOERROR;
 
   GElf_Word debuglink_crc = 0;
-  const char *debuglink_file = find_debuglink (mod->main.elf, &debuglink_crc);
+  const char *debuglink_file;
+  debuglink_file = INTUSE(dwelf_elf_gnu_debuglink) (mod->main.elf,
+						    &debuglink_crc);
 
   mod->debug.fd = (*mod->dwfl->callbacks->find_debuginfo) (MODCB_ARGS (mod),
 							   mod->main.name,
@@ -553,10 +504,59 @@ find_debuginfo (Dwfl_Module *mod)
 							   &mod->debug.name);
   Dwfl_Error result = open_elf (mod, &mod->debug);
   if (result == DWFL_E_NOERROR && mod->debug.address_sync != 0)
-    result = find_prelink_address_sync (mod);
+    result = find_prelink_address_sync (mod, &mod->debug);
   return result;
 }
 
+/* Try to find the alternative debug link for the given DWARF and set
+   it if found.  Only called when mod->dw is already setup but still
+   might need an alternative (dwz multi) debug file.  filename is either
+   the main or debug name from which the Dwarf was created. */
+static void
+find_debug_altlink (Dwfl_Module *mod, const char *filename)
+{
+  assert (mod->dw != NULL);
+
+  const char *altname;
+  const void *build_id;
+  ssize_t build_id_len = INTUSE(dwelf_dwarf_gnu_debugaltlink) (mod->dw,
+							       &altname,
+							       &build_id);
+
+  if (build_id_len > 0)
+    {
+      /* We could store altfile in the module, but don't really need it.  */
+      char *altfile = NULL;
+      mod->alt_fd = (*mod->dwfl->callbacks->find_debuginfo) (MODCB_ARGS (mod),
+							     filename,
+							     altname,
+							     0,
+							     &altfile);
+
+      /* The (internal) callbacks might just set mod->alt_elf directly
+	 because they open the Elf anyway for sanity checking.
+	 Otherwise open either the given file name or use the fd
+	 returned.  */
+      Dwfl_Error error = open_elf_file (&mod->alt_elf, &mod->alt_fd,
+					&altfile);
+      if (error == DWFL_E_NOERROR)
+	{
+	  mod->alt = INTUSE(dwarf_begin_elf) (mod->alt_elf,
+					      DWARF_C_READ, NULL);
+	  if (mod->alt == NULL)
+	    {
+	      elf_end (mod->alt_elf);
+	      mod->alt_elf = NULL;
+	      close (mod->alt_fd);
+	      mod->alt_fd = -1;
+	    }
+	  else
+	    dwarf_setalt (mod->dw, mod->alt);
+	}
+
+      free (altfile); /* See above, we don't really need it.  */
+    }
+}
 
 /* Try to find a symbol table in FILE.
    Returns DWFL_E_NOERROR if a proper one is found.
@@ -564,7 +564,7 @@ find_debuginfo (Dwfl_Module *mod)
 static Dwfl_Error
 load_symtab (struct dwfl_file *file, struct dwfl_file **symfile,
 	     Elf_Scn **symscn, Elf_Scn **xndxscn,
-	     size_t *syments, GElf_Word *strshndx)
+	     size_t *syments, int *first_global, GElf_Word *strshndx)
 {
   bool symtab = false;
   Elf_Scn *scn = NULL;
@@ -580,6 +580,7 @@ load_symtab (struct dwfl_file *file, struct dwfl_file **symfile,
 	    *symfile = file;
 	    *strshndx = shdr->sh_link;
 	    *syments = shdr->sh_size / shdr->sh_entsize;
+	    *first_global = shdr->sh_info;
 	    if (*xndxscn != NULL)
 	      return DWFL_E_NOERROR;
 	    break;
@@ -592,6 +593,7 @@ load_symtab (struct dwfl_file *file, struct dwfl_file **symfile,
 	    *symfile = file;
 	    *strshndx = shdr->sh_link;
 	    *syments = shdr->sh_size / shdr->sh_entsize;
+	    *first_global = shdr->sh_info;
 	    break;
 
 	  case SHT_SYMTAB_SHNDX:
@@ -827,11 +829,157 @@ find_dynsym (Dwfl_Module *mod)
     }
 }
 
+
+#if USE_LZMA
+/* Try to find the offset between the main file and .gnu_debugdata.  */
+static bool
+find_aux_address_sync (Dwfl_Module *mod)
+{
+  /* Don't trust the phdrs in the minisymtab elf file to be setup correctly.
+     The address_sync is equal to the main file it is embedded in at first.  */
+  mod->aux_sym.address_sync = mod->main.address_sync;
+
+  /* Adjust address_sync for the difference in entry addresses, attempting to
+     account for ELF relocation changes after aux was split.  */
+  GElf_Ehdr ehdr_main, ehdr_aux;
+  if (unlikely (gelf_getehdr (mod->main.elf, &ehdr_main) == NULL)
+      || unlikely (gelf_getehdr (mod->aux_sym.elf, &ehdr_aux) == NULL))
+    return false;
+  mod->aux_sym.address_sync += ehdr_aux.e_entry - ehdr_main.e_entry;
+
+  /* The shdrs are setup OK to make find_prelink_address_sync () do the right
+     thing, which is possibly more reliable, but it needs .gnu.prelink_undo.  */
+  if (mod->aux_sym.address_sync != 0)
+    return find_prelink_address_sync (mod, &mod->aux_sym) == DWFL_E_NOERROR;
+
+  return true;
+}
+#endif
+
+/* Try to find the auxiliary symbol table embedded in the main elf file
+   section .gnu_debugdata.  Only matters if the symbol information comes
+   from the main file dynsym.  No harm done if not found.  */
+static void
+find_aux_sym (Dwfl_Module *mod __attribute__ ((unused)),
+	      Elf_Scn **aux_symscn __attribute__ ((unused)),
+	      Elf_Scn **aux_xndxscn __attribute__ ((unused)),
+	      GElf_Word *aux_strshndx __attribute__ ((unused)))
+{
+  /* Since a .gnu_debugdata section is compressed using lzma don't do
+     anything unless we have support for that.  */
+#if USE_LZMA
+  Elf *elf = mod->main.elf;
+
+  size_t shstrndx;
+  if (elf_getshdrstrndx (elf, &shstrndx) < 0)
+    return;
+
+  Elf_Scn *scn = NULL;
+  while ((scn = elf_nextscn (elf, scn)) != NULL)
+    {
+      GElf_Shdr shdr_mem;
+      GElf_Shdr *shdr = gelf_getshdr (scn, &shdr_mem);
+      if (shdr == NULL)
+	return;
+
+      const char *name = elf_strptr (elf, shstrndx, shdr->sh_name);
+      if (name == NULL)
+	return;
+
+      if (!strcmp (name, ".gnu_debugdata"))
+	break;
+    }
+
+  if (scn == NULL)
+    return;
+
+  /* Found the .gnu_debugdata section.  Uncompress the lzma image and
+     turn it into an ELF image.  */
+  Elf_Data *rawdata = elf_rawdata (scn, NULL);
+  if (rawdata == NULL)
+    return;
+
+  Dwfl_Error error;
+  void *buffer = NULL;
+  size_t size = 0;
+  error = __libdw_unlzma (-1, 0, rawdata->d_buf, rawdata->d_size,
+			  &buffer, &size);
+  if (error == DWFL_E_NOERROR)
+    {
+      if (unlikely (size == 0))
+	free (buffer);
+      else
+	{
+	  mod->aux_sym.elf = elf_memory (buffer, size);
+	  if (mod->aux_sym.elf == NULL)
+	    free (buffer);
+	  else
+	    {
+	      mod->aux_sym.fd = -1;
+	      mod->aux_sym.elf->flags |= ELF_F_MALLOCED;
+	      if (open_elf (mod, &mod->aux_sym) != DWFL_E_NOERROR)
+		return;
+	      if (! find_aux_address_sync (mod))
+		{
+		  elf_end (mod->aux_sym.elf);
+		  mod->aux_sym.elf = NULL;
+		  return;
+		}
+
+	      /* So far, so good. Get minisymtab table data and cache it. */
+	      bool minisymtab = false;
+	      scn = NULL;
+	      while ((scn = elf_nextscn (mod->aux_sym.elf, scn)) != NULL)
+		{
+		  GElf_Shdr shdr_mem, *shdr = gelf_getshdr (scn, &shdr_mem);
+		  if (shdr != NULL)
+		    switch (shdr->sh_type)
+		      {
+		      case SHT_SYMTAB:
+			minisymtab = true;
+			*aux_symscn = scn;
+			*aux_strshndx = shdr->sh_link;
+			mod->aux_syments = shdr->sh_size / shdr->sh_entsize;
+			mod->aux_first_global = shdr->sh_info;
+			if (*aux_xndxscn != NULL)
+			  return;
+			break;
+
+		      case SHT_SYMTAB_SHNDX:
+			*aux_xndxscn = scn;
+			if (minisymtab)
+			  return;
+			break;
+
+		      default:
+			break;
+		      }
+		}
+
+	      if (minisymtab)
+		/* We found one, though no SHT_SYMTAB_SHNDX to go with it.  */
+		return;
+
+	      /* We found no SHT_SYMTAB, so everything else is bogus.  */
+	      *aux_xndxscn = NULL;
+	      *aux_strshndx = 0;
+	      mod->aux_syments = 0;
+	      elf_end (mod->aux_sym.elf);
+	      mod->aux_sym.elf = NULL;
+	      return;
+	    }
+	}
+    }
+  else
+    free (buffer);
+#endif
+}
+
 /* Try to find a symbol table in either MOD->main.elf or MOD->debug.elf.  */
 static void
 find_symtab (Dwfl_Module *mod)
 {
-  if (mod->symdata != NULL	/* Already done.  */
+  if (mod->symdata != NULL || mod->aux_symdata != NULL	/* Already done.  */
       || mod->symerr != DWFL_E_NOERROR) /* Cached previous failure.  */
     return;
 
@@ -842,9 +990,11 @@ find_symtab (Dwfl_Module *mod)
 
   /* First see if the main ELF file has the debugging information.  */
   Elf_Scn *symscn = NULL, *xndxscn = NULL;
-  GElf_Word strshndx;
+  Elf_Scn *aux_symscn = NULL, *aux_xndxscn = NULL;
+  GElf_Word strshndx, aux_strshndx = 0;
   mod->symerr = load_symtab (&mod->main, &mod->symfile, &symscn,
-			     &xndxscn, &mod->syments, &strshndx);
+			     &xndxscn, &mod->syments, &mod->first_global,
+			     &strshndx);
   switch (mod->symerr)
     {
     default:
@@ -863,7 +1013,8 @@ find_symtab (Dwfl_Module *mod)
 
 	case DWFL_E_NOERROR:
 	  mod->symerr = load_symtab (&mod->debug, &mod->symfile, &symscn,
-				     &xndxscn, &mod->syments, &strshndx);
+				     &xndxscn, &mod->syments,
+				     &mod->first_global, &strshndx);
 	  break;
 
 	case DWFL_E_CB:		/* The find_debuginfo hook failed.  */
@@ -880,11 +1031,21 @@ find_symtab (Dwfl_Module *mod)
 	  break;
 
 	case DWFL_E_NO_SYMTAB:
+	  /* There might be an auxiliary table.  */
+	  find_aux_sym (mod, &aux_symscn, &aux_xndxscn, &aux_strshndx);
+
 	  if (symscn != NULL)
 	    {
 	      /* We still have the dynamic symbol table.  */
 	      mod->symerr = DWFL_E_NOERROR;
 	      break;
+	    }
+
+	  if (aux_symscn != NULL)
+	    {
+	      /* We still have the auxiliary symbol table.  */
+	      mod->symerr = DWFL_E_NOERROR;
+	      goto aux_cache;
 	    }
 
 	  /* Last ditch, look for dynamic symbols without section headers.  */
@@ -899,10 +1060,10 @@ find_symtab (Dwfl_Module *mod)
     {
     elferr:
       mod->symerr = DWFL_E (LIBELF, elf_errno ());
-      return;
+      goto aux_cleanup;
     }
 
-  /* Cache the data; MOD->syments was set above.  */
+  /* Cache the data; MOD->syments and MOD->first_global were set above.  */
 
   mod->symstrdata = elf_getdata (elf_getscn (mod->symfile->elf, strshndx),
 				 NULL);
@@ -921,6 +1082,40 @@ find_symtab (Dwfl_Module *mod)
   mod->symdata = elf_getdata (symscn, NULL);
   if (mod->symdata == NULL)
     goto elferr;
+
+  /* Cache any auxiliary symbol info, when it fails, just ignore aux_sym.  */
+  if (aux_symscn != NULL)
+    {
+  aux_cache:
+      /* This does some sanity checks on the string table section.  */
+      if (elf_strptr (mod->aux_sym.elf, aux_strshndx, 0) == NULL)
+	{
+	aux_cleanup:
+	  mod->aux_syments = 0;
+	  elf_end (mod->aux_sym.elf);
+	  mod->aux_sym.elf = NULL;
+	  return;
+	}
+
+      mod->aux_symstrdata = elf_getdata (elf_getscn (mod->aux_sym.elf,
+						     aux_strshndx),
+					 NULL);
+      if (mod->aux_symstrdata == NULL)
+	goto aux_cleanup;
+
+      if (aux_xndxscn == NULL)
+	mod->aux_symxndxdata = NULL;
+      else
+	{
+	  mod->aux_symxndxdata = elf_getdata (aux_xndxscn, NULL);
+	  if (mod->aux_symxndxdata == NULL)
+	    goto aux_cleanup;
+	}
+
+      mod->aux_symdata = elf_getdata (aux_symscn, NULL);
+      if (mod->aux_symdata == NULL)
+	goto aux_cleanup;
+    }
 }
 
 
@@ -1011,6 +1206,11 @@ find_dw (Dwfl_Module *mod)
     case DWFL_E_NOERROR:
       mod->debug.elf = mod->main.elf;
       mod->debug.address_sync = mod->main.address_sync;
+
+      /* The Dwarf might need an alt debug file, find that now after
+	 everything about the debug file has been setup (the
+	 find_debuginfo callback might need it).  */
+      find_debug_altlink (mod, mod->main.name);
       return;
 
     case DWFL_E_NO_DWARF:
@@ -1026,6 +1226,15 @@ find_dw (Dwfl_Module *mod)
     {
     case DWFL_E_NOERROR:
       mod->dwerr = load_dw (mod, &mod->debug);
+      if (mod->dwerr == DWFL_E_NOERROR)
+	{
+	  /* The Dwarf might need an alt debug file, find that now after
+	     everything about the debug file has been setup (the
+	     find_debuginfo callback might need it).  */
+	  find_debug_altlink (mod, mod->debug.name);
+	  return;
+	}
+
       break;
 
     case DWFL_E_CB:		/* The find_debuginfo hook failed.  */
@@ -1076,9 +1285,34 @@ dwfl_module_getsymtab (Dwfl_Module *mod)
 
   find_symtab (mod);
   if (mod->symerr == DWFL_E_NOERROR)
-    return mod->syments;
+    /* We will skip the auxiliary zero entry if there is another one.  */
+    return (mod->syments + mod->aux_syments
+	    - (mod->syments > 0 && mod->aux_syments > 0 ? 1 : 0));
 
   __libdwfl_seterrno (mod->symerr);
   return -1;
 }
 INTDEF (dwfl_module_getsymtab)
+
+int
+dwfl_module_getsymtab_first_global (Dwfl_Module *mod)
+{
+  if (mod == NULL)
+    return -1;
+
+  find_symtab (mod);
+  if (mod->symerr == DWFL_E_NOERROR)
+    {
+      /* All local symbols should come before all global symbols.  If
+	 we have an auxiliary table make sure all the main locals come
+	 first, then all aux locals, then all main globals and finally all
+	 aux globals.  And skip the auxiliary table zero undefined
+	 entry.  */
+      int skip_aux_zero = (mod->syments > 0 && mod->aux_syments > 0) ? 1 : 0;
+      return mod->first_global + mod->aux_first_global - skip_aux_zero;
+    }
+
+  __libdwfl_seterrno (mod->symerr);
+  return -1;
+}
+INTDEF (dwfl_module_getsymtab_first_global)

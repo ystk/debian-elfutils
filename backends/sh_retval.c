@@ -1,28 +1,31 @@
 /* Function return value location for Linux/SH ABI.
    Copyright (C) 2010 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   This file is part of elfutils.
    Contributed by Matt Fleming <matt@console-pimps.org>.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of either
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+     * the GNU Lesser General Public License as published by the Free
+       Software Foundation; either version 3 of the License, or (at
+       your option) any later version
+
+   or
+
+     * the GNU General Public License as published by the Free
+       Software Foundation; either version 2 of the License, or (at
+       your option) any later version
+
+   or both in parallel, as here.
+
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received copies of the GNU General Public License and
+   the GNU Lesser General Public License along with this program.  If
+   not, see <http://www.gnu.org/licenses/>.  */
 
 #ifdef HAVE_CONFIG_H
 # include <config.h>
@@ -72,7 +75,7 @@ sh_return_value_location (Dwarf_Die *functypedie, const Dwarf_Op **locp)
 
   Dwarf_Die die_mem;
   Dwarf_Die *typedie = dwarf_formref_die (attr, &die_mem);
-  int tag = dwarf_tag (typedie);
+  int tag = DWARF_TAG_OR_RETURN (typedie);
 
   /* Follow typedefs and qualifiers to get to the actual type.  */
   while (tag == DW_TAG_typedef
@@ -81,7 +84,7 @@ sh_return_value_location (Dwarf_Die *functypedie, const Dwarf_Op **locp)
     {
       attr = dwarf_attr_integrate (typedie, DW_AT_type, &attr_mem);
       typedie = dwarf_formref_die (attr, &die_mem);
-      tag = dwarf_tag (typedie);
+      tag = DWARF_TAG_OR_RETURN (typedie);
     }
 
   Dwarf_Word size;
@@ -95,7 +98,7 @@ sh_return_value_location (Dwarf_Die *functypedie, const Dwarf_Op **locp)
 	{
 	  attr = dwarf_attr_integrate (typedie, DW_AT_type, &attr_mem);
 	  typedie = dwarf_formref_die (attr, &die_mem);
-	  tag = dwarf_tag (typedie);
+	  tag = DWARF_TAG_OR_RETURN (typedie);
 	}
       /* Fall through.  */
 
