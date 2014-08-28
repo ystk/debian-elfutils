@@ -1,0 +1,240 @@
+From: Mark Wielaard <mjw@redhat.com>
+Date: Sun, 15 Jun 2014 11:30:35 +0200
+Subject: libebl: Add sym_func_value hook.
+
+The ARM EABI says that the zero bit of function symbol st_value indicates
+whether the symbol points to a THUMB or ARM function. Add a new ebl hook
+to adjust the st_value in such a case so that we get the actual value that
+the symbol points to. It isn't easily possible to reuse the existing
+resolve_sym_value for this purpose, so we end up with another hook that
+can be used from dwfl_module_getsym and elflint.
+
+Index: elfutils-0.159/backends/arm_init.c
+===================================================================
+--- elfutils-0.159.orig/backends/arm_init.c
++++ elfutils-0.159/backends/arm_init.c
+@@ -78,6 +78,7 @@ arm_init (elf, machine, eh, ehlen)
+     eh->return_value_location = arm_return_value_location_hard;
+   HOOK (eh, abi_cfi);
+   HOOK (eh, check_reloc_target_type);
++  HOOK (eh, sym_func_value);
+ 
+   /* We only unwind the core integer registers.  */
+   eh->frame_nregs = 16;
+Index: elfutils-0.159/backends/arm_symbol.c
+===================================================================
+--- elfutils-0.159.orig/backends/arm_symbol.c
++++ elfutils-0.159/backends/arm_symbol.c
+@@ -129,3 +129,11 @@ arm_check_reloc_target_type (Ebl *ebl __
+ {
+   return sh_type == SHT_ARM_EXIDX;
+ }
++
++/* ARM EABI says that the low bit indicates whether the function
++   symbol value is a THUMB function or not.  Mask it off.  */
++GElf_Addr
++arm_sym_func_value (Ebl *ebl __attribute__ ((unused)), GElf_Addr val)
++{
++  return val & ~(GElf_Addr)1;
++}
+Index: elfutils-0.159/libdwfl/dwfl_module_getsym.c
+===================================================================
+--- elfutils-0.159.orig/libdwfl/dwfl_module_getsym.c
++++ elfutils-0.159/libdwfl/dwfl_module_getsym.c
+@@ -1,5 +1,5 @@
+ /* Find debugging and symbol information for a module in libdwfl.
+-   Copyright (C) 2006-2013 Red Hat, Inc.
++   Copyright (C) 2006-2014 Red Hat, Inc.
+    This file is part of elfutils.
+ 
+    This file is free software; you can redistribute it and/or modify
+@@ -119,7 +119,7 @@ __libdwfl_getsym (Dwfl_Module *mod, int
+      descriptors).  */
+ 
+   char *ident;
+-  GElf_Addr st_value = sym->st_value;
++  GElf_Addr st_value = ebl_sym_func_value (mod->ebl, sym->st_value);
+   *resolved = false;
+   if (! adjust_st_value && mod->e_type != ET_REL && alloc
+       && (GELF_ST_TYPE (sym->st_info) == STT_FUNC
+Index: elfutils-0.159/libebl/Makefile.am
+===================================================================
+--- elfutils-0.159.orig/libebl/Makefile.am
++++ elfutils-0.159/libebl/Makefile.am
+@@ -55,7 +55,8 @@ gen_SOURCES = eblopenbackend.c eblcloseb
+ 	      eblsysvhashentrysize.c eblauxvinfo.c eblcheckobjattr.c \
+ 	      ebl_check_special_section.c ebl_syscall_abi.c eblabicfi.c \
+ 	      eblstother.c eblinitreg.c ebldwarftoregno.c eblnormalizepc.c \
+-	      eblunwind.c eblresolvesym.c eblcheckreloctargettype.c
++	      eblunwind.c eblresolvesym.c eblcheckreloctargettype.c \
++	      eblsymfuncval.c
+ 
+ libebl_a_SOURCES = $(gen_SOURCES)
+ 
+Index: elfutils-0.159/libebl/ebl-hooks.h
+===================================================================
+--- elfutils-0.159.orig/libebl/ebl-hooks.h
++++ elfutils-0.159/libebl/ebl-hooks.h
+@@ -187,9 +187,12 @@ bool EBLHOOK(unwind) (Ebl *ebl, Dwarf_Ad
+ 		      bool *signal_framep);
+ 
+ /* Returns true if the value can be resolved to an address in an
+-   allocated section, which will be returned in *SHNDXP.
++   allocated section, which will be returned in *ADDR.
+    (e.g. function descriptor resolving)  */
+ bool EBLHOOK(resolve_sym_value) (Ebl *ebl, GElf_Addr *addr);
+ 
++/* Returns the real value of a symbol function address or offset.  */
++GElf_Addr EBLHOOK(sym_func_value) (Ebl *ebl, GElf_Addr val);
++
+ /* Destructor for ELF backend handle.  */
+ void EBLHOOK(destr) (struct ebl *);
+Index: elfutils-0.159/libebl/eblsymfuncval.c
+===================================================================
+--- /dev/null
++++ elfutils-0.159/libebl/eblsymfuncval.c
+@@ -0,0 +1,43 @@
++/* Turn a symbol function value into a real function address or offset.
++   Copyright (C) 2014 Red Hat, Inc.
++   This file is part of elfutils.
++
++   This file is free software; you can redistribute it and/or modify
++   it under the terms of either
++
++     * the GNU Lesser General Public License as published by the Free
++       Software Foundation; either version 3 of the License, or (at
++       your option) any later version
++
++   or
++
++     * the GNU General Public License as published by the Free
++       Software Foundation; either version 2 of the License, or (at
++       your option) any later version
++
++   or both in parallel, as here.
++
++   elfutils is distributed in the hope that it will be useful, but
++   WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   General Public License for more details.
++
++   You should have received copies of the GNU General Public License and
++   the GNU Lesser General Public License along with this program.  If
++   not, see <http://www.gnu.org/licenses/>.  */
++
++#ifdef HAVE_CONFIG_H
++# include <config.h>
++#endif
++
++#include <libeblP.h>
++#include <assert.h>
++
++GElf_Addr
++ebl_sym_func_value (Ebl *ebl, GElf_Addr val)
++{
++  if (ebl == NULL || ebl->sym_func_value == NULL)
++    return val;
++
++  return ebl->sym_func_value (ebl, val);
++}
+Index: elfutils-0.159/libebl/libebl.h
+===================================================================
+--- elfutils-0.159.orig/libebl/libebl.h
++++ elfutils-0.159/libebl/libebl.h
+@@ -1,5 +1,5 @@
+ /* Interface for libebl.
+-   Copyright (C) 2000-2010, 2013 Red Hat, Inc.
++   Copyright (C) 2000-2010, 2013, 2014 Red Hat, Inc.
+    This file is part of elfutils.
+ 
+    This file is free software; you can redistribute it and/or modify
+@@ -448,6 +448,17 @@ extern bool ebl_unwind (Ebl *ebl, Dwarf_
+ extern bool ebl_resolve_sym_value (Ebl *ebl, GElf_Addr *addr)
+    __nonnull_attribute__ (2);
+ 
++/* Returns the real value of a symbol function address or offset
++   (e.g. when the st_value contains some flag bits that need to be
++   masked off).  This is different from ebl_resolve_sym_value which
++   only works for actual symbol addresses (in non-ET_REL files) that
++   might resolve to an address in a different section.
++   ebl_sym_func_value is called to turn the given value into the a
++   real address or offset (the original value might not be a real
++   address).  This works for both ET_REL when the value is a section
++   offset or ET_EXEC or ET_DYN symbol values, which are addresses.  */
++extern GElf_Addr ebl_sym_func_value (Ebl *ebl, GElf_Addr val);
++
+ #ifdef __cplusplus
+ }
+ #endif
+Index: elfutils-0.159/src/elflint.c
+===================================================================
+--- elfutils-0.159.orig/src/elflint.c
++++ elfutils-0.159/src/elflint.c
+@@ -768,12 +768,18 @@ section [%2d] '%s': symbol %zu: function
+ 	    {
+ 	      GElf_Addr sh_addr = (ehdr->e_type == ET_REL ? 0
+ 				   : destshdr->sh_addr);
++	      GElf_Addr st_value;
++	      if (GELF_ST_TYPE (sym->st_info) == STT_FUNC
++		  || (GELF_ST_TYPE (sym->st_info) == STT_GNU_IFUNC))
++		st_value = ebl_sym_func_value (ebl, sym->st_value);
++	      else
++		st_value = sym->st_value;
+ 	      if (GELF_ST_TYPE (sym->st_info) != STT_TLS)
+ 		{
+ 		  if (! ebl_check_special_symbol (ebl, ehdr, sym, name,
+ 						  destshdr))
+ 		    {
+-		      if (sym->st_value - sh_addr > destshdr->sh_size)
++		      if (st_value - sh_addr > destshdr->sh_size)
+ 			{
+ 			  /* GNU ld has severe bugs.  When it decides to remove
+ 			     empty sections it leaves symbols referencing them
+@@ -798,7 +804,7 @@ section [%2d] '%s': symbol %zu: function
+ section [%2d] '%s': symbol %zu: st_value out of bounds\n"),
+ 				   idx, section_name (ebl, idx), cnt);
+ 			}
+-		      else if ((sym->st_value - sh_addr
++		      else if ((st_value - sh_addr
+ 				+ sym->st_size) > destshdr->sh_size)
+ 			ERROR (gettext ("\
+ section [%2d] '%s': symbol %zu does not fit completely in referenced section [%2d] '%s'\n"),
+@@ -818,12 +824,12 @@ section [%2d] '%s': symbol %zu: referenc
+ 		    {
+ 		      /* For object files the symbol value must fall
+ 			 into the section.  */
+-		      if (sym->st_value > destshdr->sh_size)
++		      if (st_value > destshdr->sh_size)
+ 			ERROR (gettext ("\
+ section [%2d] '%s': symbol %zu: st_value out of bounds of referenced section [%2d] '%s'\n"),
+ 			       idx, section_name (ebl, idx), cnt,
+ 			       (int) xndx, section_name (ebl, xndx));
+-		      else if (sym->st_value + sym->st_size
++		      else if (st_value + sym->st_size
+ 			       > destshdr->sh_size)
+ 			ERROR (gettext ("\
+ section [%2d] '%s': symbol %zu does not fit completely in referenced section [%2d] '%s'\n"),
+@@ -852,20 +858,20 @@ section [%2d] '%s': symbol %zu: TLS symb
+ 			}
+ 		      else
+ 			{
+-			  if (sym->st_value
++			  if (st_value
+ 			      < destshdr->sh_offset - phdr->p_offset)
+ 			    ERROR (gettext ("\
+ section [%2d] '%s': symbol %zu: st_value short of referenced section [%2d] '%s'\n"),
+ 				   idx, section_name (ebl, idx), cnt,
+ 				   (int) xndx, section_name (ebl, xndx));
+-			  else if (sym->st_value
++			  else if (st_value
+ 				   > (destshdr->sh_offset - phdr->p_offset
+ 				      + destshdr->sh_size))
+ 			    ERROR (gettext ("\
+ section [%2d] '%s': symbol %zu: st_value out of bounds of referenced section [%2d] '%s'\n"),
+ 				   idx, section_name (ebl, idx), cnt,
+ 				   (int) xndx, section_name (ebl, xndx));
+-			  else if (sym->st_value + sym->st_size
++			  else if (st_value + sym->st_size
+ 				   > (destshdr->sh_offset - phdr->p_offset
+ 				      + destshdr->sh_size))
+ 			    ERROR (gettext ("\

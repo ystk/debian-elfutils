@@ -1,15 +1,161 @@
-elfutils (0.152-1+wheezy1) testing-proposed-updates; urgency=low
+elfutils (0.159-3) unstable; urgency=medium
 
-  [ Sébastien Villemot ]
-  * strict-aliasing.diff: new patch taken from upstream (Closes: #684825).
-    Thanks to Mark Wielaard for pointing to the relevant upstream commit.
+  * Make it build again on the non linux ports.
+  * Handle unaligned data when reading core files.
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Tue, 24 Jun 2014 22:14:25 +0200
+
+elfutils (0.159-2) unstable; urgency=medium
+
+  * Add patches from Mark Wielaard <mjw@redhat.com> to make
+    things work on armhf.
+  * Build-Depends on libc6-dbg on arm* to make the backtrace
+    tests work instead of skip.
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Sun, 15 Jun 2014 16:15:55 +0200
+
+elfutils (0.159-1) unstable; urgency=medium
+
+  * New upstream release
+    - Removed patches applied upstream: elfutils-robustify.patch, 
+      core_filename.patch, CVE-2014-0172.patch, unwind_non_linux.patch
+    - Add libdwelf.h to libdw-dev
+    - New functions in libdw: udpate symbols file
+  * Also output tests/test-suite.log on failure
+  * Also Build-Depend on libc6-dbg on powerpcspe, ppc64 and ppc64el
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Mon, 26 May 2014 22:03:29 +0200
+
+elfutils (0.158-2) unstable; urgency=medium
+
+  * There is no support for unwinding on non-Linux ports, make it
+    build on them and make the test suite skip the tests.
+  * Build-Depend on libc6-dbg on powerpc so that we have unwind
+    information.  This is a work around for things not being 
+    build using -fasynchronous-unwind-tables
+  * Output tests/test-suite.log
+  * Add support for parallel building
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Thu, 01 May 2014 19:04:06 +0200
+
+elfutils (0.158-1) unstable; urgency=medium
+
+  * New upstream release
+    - Drop patch applied upstream
+    - Add supports for arm64 (Closes: #745368)
+    - Update libdw1.symbols.
+  * Apply core_filename.patch from Matthias Klose
+  * Fix CVE-2014-0172 (Closes: #744017)
+  * Add upstream signing key.
+  * Remove config/ar-lib file during clean
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Mon, 21 Apr 2014 12:59:25 +0200
+
+elfutils (0.157-3) unstable; urgency=low
+
+  * Build-Depend on gcc-multilib on [any-amd64] instead of [amd64]
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Sun, 17 Nov 2013 22:54:31 +0100
+
+elfutils (0.157-2) unstable; urgency=low
+
+  * Application in the readelf binary package, libdw1 itself use internal
+    APIs from libelf and so need a strict dependency on the same libelf1
+    binary package.  libasm1 also needs a strict dependency on libdw1 since
+    it uses libebl.a and so uses the MODVERSION to openthe backends.  The
+    dependency from libasm1 to libdw1 was missing.
+    Disabling the thread safety resulted in struct Elf's size changing
+    causing things like eu-readelf to break when an older libelf1 was
+    installed.
+  * Apply patch from upstream to fix the IA64 regression failure
+    with a powerpc binary
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Sun, 03 Nov 2013 15:20:06 +0100
+
+elfutils (0.157-1) unstable; urgency=low
+
+  * New upstream release
+    - Update portability and robustify patch
+    - Make arm_backend.diff apply to the new upstream version
+    - Adjust symbol files for new symbols
+  * Adjust addrcfi test results for arm to work with our arm patch.
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Tue, 01 Oct 2013 18:21:23 +0200
+
+elfutils (0.156-1) unstable; urgency=low
+
+  * New upstream release
+    - Update portability and robustify patch
+    - Make hppa_backend.diff, arm_backend.diff, mips_backend.diff,
+      m68k_backend.diff, testsuite-ignore-elflint apply to the new
+      upstream version
+    - Drop patches elf_end_unlock.patch, alldts.patch, strip_sh_type.patch:
+      applied upstream
+    - Works with binutils-gold (Closes: #647359)
+    - Works with gcc 4.8 (Closes: #701271)
+  * drop elf_additions.diff, it's not used.
+  * Remove config.h.in and test-driver during clean (Closes: #695927)
+  * Add build dependency on gcc-multilib [amd64] to have a working gcc -m32
+    for the test suite.
+  * arm backend: change r12 back to signed, no idea why it was made unsigned.
+  * arm backend: rename the "special" set to "state".
+  * Our arm backend patch adds more registers, update the arm_backend.diff to 
+    expectd those changes in the test suite
+  * disable thread safety, it's not tested upstream.
+  * Update libdw1.symbols
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Sun, 28 Jul 2013 14:32:23 +0200
+
+elfutils (0.153-2) unstable; urgency=low
+
+  * Make it actually build properly using build-arch.  (Closes: #684528)
+  * Call rwlock_unlock() before rwlock_fini().  The lock was still held
+    causing problems on kfreebsd.  (Closes: #662041)
+  * Don't exclude sh_type >= SHT_NUM from stripping, it's set to
+    SHT_MIPS_DWARF on mips. (Closes: #662041)
+  * readelf -w didn't show the content of debug sections on mips
+    because sh_type was set to SHT_MIPS_DWARF.
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Tue, 18 Sep 2012 21:12:08 +0200
+
+elfutils (0.153-1) unstable; urgency=low
+
+  [ Jonathan Nieder <jrnieder@gmail.com> ]
+  * Run autotools at build time.
+    - debian/control: Build-Depends: autoconf, automake.
+    - debian/rules:
+      - config.status:
+        - depend on configure.ac, not configure.
+        - autoreconf -fis.
+      - clean: remove autotools-generated files to avoid .diff.gz
+        changes when built twice in a row.
+    - debian/patches: remove do-autoreconf.diff.
+
+  [ Marcin Juszkiewicz <marcin.juszkiewicz@linaro.org> ]
+  * Convert to multiarch. (Closes: #657139)
+  * Added build-{arch,indep} targets.
+  * Switched to use 'dh_prep' instead of 'dh_clean -k'
 
   [ Kurt Roeckx ]
-  * Use elf_end_unlock.patch from unstable (Closes: #662041)
-  * Use dlopen() with "lib" instead of "$LIB" to open the backends.
-    (Closes: #691612)
-
- -- Kurt Roeckx <kurt@roeckx.be>  Mon, 12 Nov 2012 20:22:05 +0100
+  * New upstream release
+    - Portability patch has workaround for broken bswap_32 macro.
+      This should also have been fixed in glibc code.  (Closes: #595496)
+    - Fix bashism in configure script (Closes: #647350)
+  * Remove Christian Aichinger from uploaders (Closes: #661119)
+  * Make the m68k port functional, thanks to a patch from
+    Thorsten Glaser <tg@mirbsd.de> (Patch in #595496, #384794)
+  * Fix test suite to set up test environment (alldts.patch).
+  * Use dpkg-buildflags.  Build-Depend on dpkg-dev (>= 1.16.1~) for
+    buildflags.mk.
+  * Call configure with --enable-maintainer-mode so all files get regenerated
+    Also add Build-Depends on gawk for this to work.
+  * Revert %m[ to %a[ change in addr2line and line2addr from the portability
+    patch.
+  * Clean up more files (Makefile.in, libdw/known-dwarf.h)
+  * Set libdir to the multiarch dir, so that the rpath gets set up correctly
+    and that we don't have to move the files in the rules file.
+ 
+ -- Kurt Roeckx <kurt@roeckx.be>  Fri, 24 Feb 2012 20:23:08 +0100
 
 elfutils (0.152-1) unstable; urgency=low
 

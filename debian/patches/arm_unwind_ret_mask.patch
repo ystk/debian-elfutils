@@ -1,0 +1,105 @@
+From: Mark Wielaard <mjw@redhat.com>
+Date: Sun, 15 Jun 2014 12:30:02 +0200
+Subject: libebl: Add ebl_unwind_ret_mask.
+
+Another ARM oddity. A return value address in an unwind will contain an
+extra bit to indicate whether to return to a regular ARM or THUMB function.
+Add a new ebl function to return a mask to use to get the actual return
+address during an unwind ebl_unwind_ret_mask.
+
+Index: elfutils-0.159/backends/arm_init.c
+===================================================================
+--- elfutils-0.159.orig/backends/arm_init.c
++++ elfutils-0.159/backends/arm_init.c
+@@ -84,5 +84,8 @@ arm_init (elf, machine, eh, ehlen)
+   eh->frame_nregs = 16;
+   HOOK (eh, set_initial_registers_tid);
+ 
++  /* Bit zero encodes whether to return to a THUMB or ARM function. */
++  eh->unwind_ret_mask = ~(GElf_Addr)1;
++
+   return MODVERSION;
+ }
+Index: elfutils-0.159/libdwfl/frame_unwind.c
+===================================================================
+--- elfutils-0.159.orig/libdwfl/frame_unwind.c
++++ elfutils-0.159/libdwfl/frame_unwind.c
+@@ -1,5 +1,5 @@
+ /* Get previous frame state for an existing frame state.
+-   Copyright (C) 2013 Red Hat, Inc.
++   Copyright (C) 2013, 2014 Red Hat, Inc.
+    This file is part of elfutils.
+ 
+    This file is free software; you can redistribute it and/or modify
+@@ -582,6 +582,10 @@ handle_cfi (Dwfl_Frame *state, Dwarf_Add
+ 	  continue;
+ 	}
+ 
++      /* Some architectures encode some extra info in the return address.  */
++      if (regno == frame->fde->cie->return_address_register)
++	regval &= ebl_unwind_ret_mask (ebl);
++
+       /* This is another strange PPC[64] case.  There are two
+ 	 registers numbers that can represent the same DWARF return
+ 	 register number.  We only want one to actually set the return
+Index: elfutils-0.159/libebl/eblinitreg.c
+===================================================================
+--- elfutils-0.159.orig/libebl/eblinitreg.c
++++ elfutils-0.159/libebl/eblinitreg.c
+@@ -1,5 +1,5 @@
+ /* Fetch live process Dwfl_Frame from PID.
+-   Copyright (C) 2013 Red Hat, Inc.
++   Copyright (C) 2013, 2014 Red Hat, Inc.
+    This file is part of elfutils.
+ 
+    This file is free software; you can redistribute it and/or modify
+@@ -49,3 +49,10 @@ ebl_frame_nregs (Ebl *ebl)
+ {
+   return ebl == NULL ? 0 : ebl->frame_nregs;
+ }
++
++GElf_Addr
++ebl_unwind_ret_mask (Ebl *ebl)
++{
++  return ((ebl == NULL || ebl->unwind_ret_mask == 0)
++	  ? ~(GElf_Addr)0 : ebl->unwind_ret_mask);
++}
+Index: elfutils-0.159/libebl/libebl.h
+===================================================================
+--- elfutils-0.159.orig/libebl/libebl.h
++++ elfutils-0.159/libebl/libebl.h
+@@ -409,6 +409,10 @@ extern bool ebl_set_initial_registers_ti
+ extern size_t ebl_frame_nregs (Ebl *ebl)
+   __nonnull_attribute__ (1);
+ 
++/* Mask to use for unwind return address in case the architecture adds
++   some extra non-address bits to it.  */
++extern GElf_Addr ebl_unwind_ret_mask (Ebl *ebl);
++
+ /* Convert *REGNO as is in DWARF to a lower range suitable for
+    Dwarf_Frame->REGS indexing.  */
+ extern bool ebl_dwarf_to_regno (Ebl *ebl, unsigned *regno)
+Index: elfutils-0.159/libebl/libeblP.h
+===================================================================
+--- elfutils-0.159.orig/libebl/libeblP.h
++++ elfutils-0.159/libebl/libeblP.h
+@@ -1,5 +1,5 @@
+ /* Internal definitions for interface for libebl.
+-   Copyright (C) 2000-2009, 2013 Red Hat, Inc.
++   Copyright (C) 2000-2009, 2013, 2014 Red Hat, Inc.
+    This file is part of elfutils.
+ 
+    This file is free software; you can redistribute it and/or modify
+@@ -64,6 +64,12 @@ struct ebl
+      Ebl architecture can unwind iff FRAME_NREGS > 0.  */
+   size_t frame_nregs;
+ 
++  /* Mask to use to get the return address from an unwind in case the
++     architecture adds some extra non-address bits to it.  When not
++     initialized (0) then ebl_unwind_ret_mask will return ~0, otherwise
++     it should be the actual mask to use.  */
++  GElf_Addr unwind_ret_mask;
++
+   /* Function descriptor load address and table as used by
+      ebl_resolve_sym_value if available for this arch.  */
+   GElf_Addr fd_addr;

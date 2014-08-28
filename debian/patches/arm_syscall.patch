@@ -1,0 +1,25 @@
+From: Mark Wielaard <mjw@redhat.com>
+Date: Sat, 14 Jun 2014 01:11:16 +0200
+Subject: tests: backtrace.c accept __libc_do_syscall as first frame symname.
+
+On some architectures (Debian armhf) system calls go through
+__libc_do_syscall instead of __kernel_vsyscall. Accept either of
+these symbol names for the first backtrace frame.
+
+diff --git a/tests/backtrace.c b/tests/backtrace.c
+index ce0bd17..1d3948e 100644
+--- a/tests/backtrace.c
++++ b/tests/backtrace.c
+@@ -98,7 +98,8 @@ callback_verify (pid_t tid, unsigned frameno, Dwarf_Addr pc,
+   {
+     case 0:
+       if (! reduce_frameno && symname
+-	       && strcmp (symname, "__kernel_vsyscall") == 0)
++	       && (strcmp (symname, "__kernel_vsyscall") == 0
++		   || strcmp (symname, "__libc_do_syscall") == 0))
+ 	reduce_frameno = true;
+       else
+ 	assert (symname && strcmp (symname, "raise") == 0);
+-- 
+1.7.1
+

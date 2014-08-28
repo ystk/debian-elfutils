@@ -1,52 +1,31 @@
 /* Internal definitions for libdwarf.
-   Copyright (C) 2002-2010 Red Hat, Inc.
-   This file is part of Red Hat elfutils.
+   Copyright (C) 2002-2011, 2013, 2014 Red Hat, Inc.
+   This file is part of elfutils.
    Written by Ulrich Drepper <drepper@redhat.com>, 2002.
 
-   Red Hat elfutils is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by the
-   Free Software Foundation; version 2 of the License.
+   This file is free software; you can redistribute it and/or modify
+   it under the terms of either
 
-   Red Hat elfutils is distributed in the hope that it will be useful, but
+     * the GNU Lesser General Public License as published by the Free
+       Software Foundation; either version 3 of the License, or (at
+       your option) any later version
+
+   or
+
+     * the GNU General Public License as published by the Free
+       Software Foundation; either version 2 of the License, or (at
+       your option) any later version
+
+   or both in parallel, as here.
+
+   elfutils is distributed in the hope that it will be useful, but
    WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with Red Hat elfutils; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-
-   In addition, as a special exception, Red Hat, Inc. gives You the
-   additional right to link the code of Red Hat elfutils with code licensed
-   under any Open Source Initiative certified open source license
-   (http://www.opensource.org/licenses/index.php) which requires the
-   distribution of source code with any binary distribution and to
-   distribute linked combinations of the two.  Non-GPL Code permitted under
-   this exception must only link to the code of Red Hat elfutils through
-   those well defined interfaces identified in the file named EXCEPTION
-   found in the source code files (the "Approved Interfaces").  The files
-   of Non-GPL Code may instantiate templates or use macros or inline
-   functions from the Approved Interfaces without causing the resulting
-   work to be covered by the GNU General Public License.  Only Red Hat,
-   Inc. may make changes or additions to the list of Approved Interfaces.
-   Red Hat's grant of this exception is conditioned upon your not adding
-   any new exceptions.  If you wish to add a new Approved Interface or
-   exception, please contact Red Hat.  You must obey the GNU General Public
-   License in all respects for all of the Red Hat elfutils code and other
-   code used in conjunction with Red Hat elfutils except the Non-GPL Code
-   covered by this exception.  If you modify this file, you may extend this
-   exception to your version of the file, but you are not obligated to do
-   so.  If you do not wish to provide this exception without modification,
-   you must delete this exception statement from your version and license
-   this file solely under the GPL without exception.
-
-   Red Hat elfutils is an included package of the Open Invention Network.
-   An included package of the Open Invention Network is a package for which
-   Open Invention Network licensees cross-license their patents.  No patent
-   license is granted, either expressly or impliedly, by designation as an
-   included package.  Should you wish to participate in the Open Invention
-   Network licensing program, please visit www.openinventionnetwork.com
-   <http://www.openinventionnetwork.com>.  */
+   You should have received copies of the GNU General Public License and
+   the GNU Lesser General Public License along with this program.  If
+   not, see <http://www.gnu.org/licenses/>.  */
 
 #ifndef _LIBDWP_H
 #define _LIBDWP_H 1
@@ -55,6 +34,7 @@
 #include <stdbool.h>
 
 #include <libdw.h>
+#include <dwarf.h>
 
 
 /* gettext helper macros.  */
@@ -92,7 +72,9 @@ enum
     IDX_debug_pubnames,
     IDX_debug_str,
     IDX_debug_macinfo,
+    IDX_debug_macro,
     IDX_debug_ranges,
+    IDX_gnu_debugaltlink,
     IDX_last
   };
 
@@ -136,6 +118,7 @@ enum
   DWARF_E_INVALID_OFFSET,
   DWARF_E_NO_DEBUG_RANGES,
   DWARF_E_INVALID_CFI,
+  DWARF_E_NO_ALT_DEBUGLINK
 };
 
 
@@ -147,8 +130,16 @@ struct Dwarf
   /* The underlying ELF file.  */
   Elf *elf;
 
+  /* dwz alternate DWARF file.  */
+  Dwarf *alt_dwarf;
+
   /* The section data.  */
   Elf_Data *sectiondata[IDX_last];
+
+#if USE_ZLIB
+  /* The 1 << N bit is set if sectiondata[N] is malloc'd decompressed data.  */
+  unsigned int sectiondata_gzip_mask:IDX_last;
+#endif
 
   /* True if the file has a byte order different from the host.  */
   bool other_byte_order;
@@ -385,6 +376,12 @@ extern void *__libdw_allocate (Dwarf *dbg, size_t minsize, size_t align)
 /* Default OOM handler.  */
 extern void __libdw_oom (void) __attribute ((noreturn, visibility ("hidden")));
 
+#if USE_ZLIB
+extern void __libdw_free_zdata (Dwarf *dwarf) internal_function;
+#else
+# define __libdw_free_zdata(dwarf)	((void) (dwarf))
+#endif
+
 /* Allocate the internal data for a unit not seen before.  */
 extern struct Dwarf_CU *__libdw_intern_next_unit (Dwarf *dbg, bool debug_types)
      __nonnull_attribute__ (1) internal_function;
@@ -405,10 +402,39 @@ extern Dwarf_Abbrev *__libdw_getabbrev (Dwarf *dbg, struct Dwarf_CU *cu,
      __nonnull_attribute__ (1) internal_function;
 
 /* Helper functions for form handling.  */
-extern size_t __libdw_form_val_len (Dwarf *dbg, struct Dwarf_CU *cu,
-				    unsigned int form,
-				    const unsigned char *valp)
+extern size_t __libdw_form_val_compute_len (Dwarf *dbg, struct Dwarf_CU *cu,
+					    unsigned int form,
+					    const unsigned char *valp)
      __nonnull_attribute__ (1, 2, 4) internal_function;
+
+/* Find the length of a form attribute.  */
+static inline size_t
+__nonnull_attribute__ (1, 2, 4)
+__libdw_form_val_len (Dwarf *dbg, struct Dwarf_CU *cu,
+		      unsigned int form, const unsigned char *valp)
+{
+  /* Small lookup table of forms with fixed lengths.  Absent indexes are
+     initialized 0, so any truly desired 0 is set to 0x80 and masked.  */
+  static const uint8_t form_lengths[] =
+    {
+      [DW_FORM_flag_present] = 0x80,
+      [DW_FORM_data1] = 1, [DW_FORM_ref1] = 1, [DW_FORM_flag] = 1,
+      [DW_FORM_data2] = 2, [DW_FORM_ref2] = 2,
+      [DW_FORM_data4] = 4, [DW_FORM_ref4] = 4,
+      [DW_FORM_data8] = 8, [DW_FORM_ref8] = 8, [DW_FORM_ref_sig8] = 8,
+    };
+
+  /* Return immediately for forms with fixed lengths.  */
+  if (form < sizeof form_lengths / sizeof form_lengths[0])
+    {
+      uint8_t len = form_lengths[form];
+      if (len != 0)
+	return len & 0x7f; /* Mask to allow 0x80 -> 0.  */
+    }
+
+  /* Other forms require some computation.  */
+  return __libdw_form_val_compute_len (dbg, cu, form, valp);
+}
 
 /* Helper function for DW_FORM_ref* handling.  */
 extern int __libdw_formref (Dwarf_Attribute *attr, Dwarf_Off *return_offset)
@@ -589,13 +615,13 @@ __libdw_read_offset_inc (Dwarf *dbg,
 }
 
 static inline int
-__libdw_read_offset (Dwarf *dbg,
+__libdw_read_offset (Dwarf *dbg, Dwarf *dbg_ret,
 		     int sec_index, const unsigned char *addr,
 		     int width, Dwarf_Off *ret, int sec_ret,
 		     size_t size)
 {
   READ_AND_RELOCATE (__libdw_relocate_offset, (*ret));
-  return __libdw_offset_in_section (dbg, sec_ret, *ret, size);
+  return __libdw_offset_in_section (dbg_ret, sec_ret, *ret, size);
 }
 
 static inline size_t
@@ -626,12 +652,16 @@ unsigned char * __libdw_formptr (Dwarf_Attribute *attr, int sec_index,
 				 Dwarf_Off *offsetp)
   internal_function;
 
+/* Fills in the given attribute to point at an empty location expression.  */
+void __libdw_empty_loc_attr (Dwarf_Attribute *attr, struct Dwarf_CU *cu)
+  internal_function;
 
 
 /* Aliases to avoid PLTs.  */
 INTDECL (dwarf_aggregate_size)
 INTDECL (dwarf_attr)
 INTDECL (dwarf_attr_integrate)
+INTDECL (dwarf_begin)
 INTDECL (dwarf_begin_elf)
 INTDECL (dwarf_child)
 INTDECL (dwarf_dieoffset)
@@ -645,9 +675,11 @@ INTDECL (dwarf_formref_die)
 INTDECL (dwarf_formsdata)
 INTDECL (dwarf_formstring)
 INTDECL (dwarf_formudata)
+INTDECL (dwarf_getalt)
 INTDECL (dwarf_getarange_addr)
 INTDECL (dwarf_getarangeinfo)
 INTDECL (dwarf_getaranges)
+INTDECL (dwarf_getlocation_die)
 INTDECL (dwarf_getsrcfiles)
 INTDECL (dwarf_getsrclines)
 INTDECL (dwarf_hasattr)
@@ -659,6 +691,7 @@ INTDECL (dwarf_nextcu)
 INTDECL (dwarf_next_unit)
 INTDECL (dwarf_offdie)
 INTDECL (dwarf_ranges)
+INTDECL (dwarf_setalt)
 INTDECL (dwarf_siblingof)
 INTDECL (dwarf_srclang)
 INTDECL (dwarf_tag)

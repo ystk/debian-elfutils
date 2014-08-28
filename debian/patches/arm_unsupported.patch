@@ -1,0 +1,72 @@
+From: Mark Wielaard <mjw@redhat.com>
+Date: Sat, 14 Jun 2014 01:04:52 +0200
+Subject: tests: backtrace-subr.sh add check_native_unsupported.
+
+The special arm check in check_unsupported should only trigger for native
+tests, otherwise on arm various backtrace tests would be skipped that
+should work just fine.
+
+Signed-off-by: Mark Wielaard <mjw@redhat.com>
+---
+ tests/ChangeLog              |    7 +++++++
+ tests/backtrace-subr.sh      |   13 ++++++++++---
+ tests/run-backtrace-dwarf.sh |    2 +-
+ 3 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/tests/backtrace-subr.sh b/tests/backtrace-subr.sh
+index 875e0b6..1d3d6d4 100644
+--- a/tests/backtrace-subr.sh
++++ b/tests/backtrace-subr.sh
+@@ -74,13 +74,20 @@ check_unsupported()
+     echo >&2 $testname: arch not supported
+     exit 77
+   fi
++}
++
++check_native_unsupported()
++{
++  err=$1
++  testname=$2
++  check_unsupported $err $testname
+ 
+   # ARM is special. It is supported, but it doesn't use .eh_frame by default
+   # making the native tests fail unless debuginfo (for glibc) is installed
+   # and we can fall back on .debug_frame for the CFI.
+   case "`uname -m`" in
+     arm* )
+-      if grep 'dwfl_thread_getframes: No DWARF information found' $1; then
++      if grep 'dwfl_thread_getframes: No DWARF information found' $err; then
+ 	echo >&2 $testname: arm needs debuginfo installed for all libraries
+ 	exit 77
+       fi
+@@ -109,7 +116,7 @@ check_native()
+   tempfiles $child.{bt,err}
+   (set +ex; testrun ${abs_builddir}/backtrace --backtrace-exec=${abs_builddir}/$child 1>$child.bt 2>$child.err; true)
+   cat $child.{bt,err}
+-  check_unsupported $child.err $child
++  check_native_unsupported $child.err $child
+   check_all $child.{bt,err} $child
+ }
+ 
+@@ -140,6 +147,6 @@ check_native_core()
+   tempfiles $core{,.{bt,err}}
+   (set +ex; testrun ${abs_builddir}/backtrace -e ${abs_builddir}/$child --core=$core 1>$core.bt 2>$core.err; true)
+   cat $core.{bt,err}
+-  check_unsupported $core.err $child-$core
++  check_native_unsupported $core.err $child-$core
+   check_all $core.{bt,err} $child-$core
+ }
+diff --git a/tests/run-backtrace-dwarf.sh b/tests/run-backtrace-dwarf.sh
+index a133b32..8834048 100755
+--- a/tests/run-backtrace-dwarf.sh
++++ b/tests/run-backtrace-dwarf.sh
+@@ -26,5 +26,5 @@ unset VALGRIND_CMD
+ tempfiles dwarf.{bt,err}
+ (set +ex; testrun ${abs_builddir}/backtrace-dwarf 1>dwarf.bt 2>dwarf.err; true)
+ cat dwarf.{bt,err}
+-check_unsupported dwarf.err dwarf
++check_native_unsupported dwarf.err dwarf
+ check_main dwarf.bt dwarf
+-- 
+1.7.1
+

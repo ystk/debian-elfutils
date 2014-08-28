@@ -1,14 +1,15 @@
 # -*- rpm-spec-*-
 Summary: A collection of utilities and DSOs to handle compiled objects
 Name: elfutils
-Version: 0.152
+Version: 0.159
 Release: 1
-License: GPLv2 with exceptions
+License: GPLv3+ and (GPLv2+ or LGPLv3+)
 Group: Development/Tools
 Source: elfutils-%{version}.tar.bz2
 Obsoletes: libelf libelf-devel
 Requires: elfutils-libelf = %{version}-%{release}
 Requires: glibc >= 2.7
+Requires: libstdc++
 
 # ExcludeArch: xxx
 
@@ -23,6 +24,7 @@ BuildRequires: gettext
 BuildRequires: zlib-devel
 BuildRequires: bzip2-devel
 BuildRequires: xz-devel
+BuildRequires: gcc-c++
 
 %define _gnu %{nil}
 %define _programprefix eu-
@@ -39,6 +41,7 @@ handling.
 %package devel
 Summary: Development libraries to handle compiled objects.
 Group: Development/Tools
+License: GPLv2+ or LGPLv3+
 Requires: elfutils = %{version}-%{release}
 Requires: elfutils-libelf-devel = %{version}-%{release}
 
@@ -52,6 +55,7 @@ assembler interface.
 %package devel-static
 Summary: Static archives to handle compiled objects.
 Group: Development/Tools
+License: GPLv2+ or LGPLv3+
 Requires: elfutils-devel = %{version}-%{release}
 
 %description devel-static
@@ -61,6 +65,7 @@ with the code the handle compiled objects.
 %package libelf
 Summary: Library to read and write ELF files.
 Group: Development/Tools
+License: GPLv2+ or LGPLv3+
 
 %description libelf
 The elfutils-libelf package provides a DSO which allows reading and
@@ -71,6 +76,7 @@ elfutils package use it also to generate new ELF files.
 %package libelf-devel
 Summary: Development support for libelf
 Group: Development/Tools
+License: GPLv2+ or LGPLv3+
 Requires: elfutils-libelf = %{version}-%{release}
 Conflicts: libelf-devel
 
@@ -83,6 +89,7 @@ different sections of an ELF file.
 %package libelf-devel-static
 Summary: Static archive of libelf
 Group: Development/Tools
+License: GPLv2+ or LGPLv3+
 Requires: elfutils-libelf-devel = %{version}-%{release}
 Conflicts: libelf-devel
 
@@ -130,7 +137,7 @@ rm -rf ${RPM_BUILD_ROOT}
 
 %files
 %defattr(-,root,root)
-%doc README TODO
+%doc COPYING COPYING-GPLV2 COPYING-LGPLV3 README TODO CONTRIBUTING
 %{_bindir}/eu-elflint
 %{_bindir}/eu-nm
 %{_bindir}/eu-readelf
@@ -162,6 +169,7 @@ rm -rf ${RPM_BUILD_ROOT}
 %{_includedir}/elfutils/libebl.h
 %{_includedir}/elfutils/libdw.h
 %{_includedir}/elfutils/libdwfl.h
+%{_includedir}/elfutils/libdwelf.h
 %{_libdir}/libebl.a
 #%{_libdir}/libasm.so
 %{_libdir}/libdw.so
@@ -188,12 +196,123 @@ rm -rf ${RPM_BUILD_ROOT}
 %{_libdir}/libelf.a
 
 %changelog
+* Sat May 17 2014 Mark Wielaard <mjw@redhat.com> 0.159-1
+- stack: New option -d, --debugname to lookup DWARF debuginfo name 
+  for frame.  New option -i, --inlines to show inlined frames 
+  using DWARF debuginfo.
+- libdwelf: New libdwelf.h header for libdw.so DWARF ELF Low-level 
+  Functions.  New function dwelf_elf_gnu_debuglink, 
+  dwelf_dwarf_gnu_debugaltlink, and dwelf_elf_gnu_build_id.
+- libdw: Support for DWZ multifile forms DW_FORM_GNU_ref_alt and      
+  DW_FORM_GNU_strp_alt is now enabled by default and no longer        
+  experimental. Added new functions dwarf_getalt and dwarf_setalt       
+  to get or set the alternative debug file used for the alt FORMs.     
+  The dwfl_linux_proc_find_elf callback will now find ELF from       
+  process memory for (deleted) files if the Dwfl has process state     
+  attached.
+- libdwfl: The dwfl_build_id_find_debuginfo and 
+  dwfl_standard_find_debuginfo functions will now try to 
+  resolve and set the alternative debug file.
+- backends: Add CFI unwinding for arm. Relies on .debug_frame.        
+  Add arm process initial register state compatible mode to AARCH64. 
+  Add aarch64 native and core unwind support.
+- other: All separate elfutils-robustify patches have been merged.    
+  CVE-2014-0172 Check overflow before calling malloc to uncompress 
+  data.
+
+* Fri Jan  3 2014 Mark Wielaard <mjw@redhat.com> 0.158-1
+- libdwfl: dwfl_core_file_report has new parameter executable.
+  New functions dwfl_module_getsymtab_first_global,
+  dwfl_module_getsym_info and dwfl_module_addrinfo.
+  Added unwinder with type Dwfl_Thread_Callbacks, opaque types
+  Dwfl_Thread and Dwfl_Frame and functions dwfl_attach_state,
+  dwfl_pid, dwfl_thread_dwfl, dwfl_thread_tid, dwfl_frame_thread,
+  dwfl_thread_state_registers, dwfl_thread_state_register_pc,
+  dwfl_getthread_frames, dwfl_getthreads, dwfl_thread_getframes
+  and dwfl_frame_pc.
+- addr2line: New option -x to show the section an address was found in.
+- stack: New utility that uses the new unwinder for processes and cores.
+- backends: Unwinder support for i386, x86_64, s390, s390x, ppc and ppc64.
+  aarch64 support.
+
+* Mon Sep 30 2013 Mark Wielaard <mjw@redhat.com> 0.157-1
+- libdw: Add new functions dwarf_getlocations, dwarf_getlocation_attr 
+         and dwarf_getlocation_die.
+- readelf: Show contents of NT_SIGINFO and NT_FILE core notes.
+- addr2line: Support -i, --inlines output option.
+- backends: abi_cfi hook for arm, ppc and s390.
+
+* Thu Jul 25 2013 Jan Kratochvil <jan.kratochvil@redhat.com> 0.156-1
+- lib: New macro COMPAT_VERSION_NEWPROTO.
+- libdw: Handle GNU extension opcodes in dwarf_getlocation.
+- libdwfl: Fix STB_GLOBAL over STB_WEAK preference in 
+  dwfl_module_addrsym.          Add minisymtab support.          Add 
+  parameter add_p_vaddr to dwfl_report_elf.          Use DT_DEBUG 
+  library search first.
+- libebl: Handle new core note types in EBL.
+- backends: Interpret NT_ARM_VFP.           Implement core file 
+  registers parsing for s390/s390x.
+- readelf: Add --elf-section input option to inspect an embedded ELF 
+  file.          Add -U, --unresolved-address-offsets output control.   
+         Add --debug-dump=decodedline support.          Accept version 
+  8 .gdb_index section format.          Adjust output formatting width. 
+           When highpc is in constant form print it also as address.    
+        Display raw .debug_aranges. Use libdw only for decodedaranges.
+- elflint: Add __bss_start__ to the list of allowed symbols.
+- tests: Add configure --enable-valgrind option to run all tests 
+  under valgrind.        Enable automake parallel-tests for make check.
+- translations: Updated Polish translation.
+- Updates for Automake 1.13.
+
+* Fri Aug 24 2012 Mark Wielaard <mjw@redhat.com> 0.155-1
+- libelf: elf*_xlatetomd now works for cross-endian ELF note data.    
+       elf_getshdr now works consistently on non-mmaped ELF files after 
+          calling elf_cntl(ELF_C_FDREAD).         Implement support for 
+  ar archives with 64-bit symbol table.
+- libdw: dwarf.h corrected the DW_LANG_ObjC constant name (was 
+  DW_LANG_Objc).        Any existing sources using the old name will 
+  have to be updated.        Add DW_MACRO_GNU .debug_macro type 
+  encodings constants, DW_ATE_UTF        and DW_OP_GNU_parameter_ref to 
+  dwarf.h.        Experimental support for DWZ multifile forms 
+  DW_FORM_GNU_ref_alt        and DW_FORM_GNU_strp_alt.  Disabled by 
+  default.  Use configure        --enable-dwz to test it.
+- readelf: Add .debug_macro parsing support.          Add .gdb_index 
+  version 7 parsing support.          Recognize DW_OP_GNU_parameter_ref.
+- backends: Add support for Tilera TILE-Gx processor.
+- translations: Updated Ukrainian translation.
+
+* Fri Jun 22 2012 Mark Wielaard <mjw@redhat.com> 0.154-1
+- libelf: [g]elf[32|64]_offscn() do not match SHT_NOBITS sections at 
+  OFFSET.
+- libdw: dwarf_highpc function now handles DWARF 4 DW_AT_high_pc 
+  constant form.        Fix bug using dwarf_next_unit to iterate over 
+  .debug_types.
+- elflint: Now accepts gold linker produced executables.
+- The license is now GPLv2/LGPLv3+ for the libraries and GPLv3+ for 
+  stand-alone programs. There is now also a formal CONTRIBUTING 
+  document describing how to submit patches.
+
+* Thu Feb 23 2012 Mark Wielaard <mjw@redhat.com> 0.153-1
+- libdw: Support reading .zdebug_* DWARF sections compressed via zlib.
+- libdwfl: Speed up dwfl_module_addrsym.
+- nm: Support C++ demangling.
+- ar: Support D modifier for "deterministic output" with no 
+  uid/gid/mtime info.     The U modifier is the inverse.     elfutils 
+  can be configured with the --enable-deterministic-archives     option 
+  to make the D behavior the default when U is not specified.
+- ranlib: Support -D and -U flags with same meaning.
+- readelf: Improve output of -wline. Add support for printing SDT elf 
+  notes.          Add printing of .gdb_index section. 	 Support for 
+  typed DWARF stack, call_site and entry_value.
+- strip: Add --reloc-debug-sections option.        Improved SHT_GROUP 
+  sections handling.
+
 * Tue Feb 15 2011  <drepper@gmail.com> 0.152-1
 - Various build and warning nits fixed for newest GCC and Autoconf.
-- libdwfl: Yet another prelink-related fix for another regression. 
-  	 Look for Linux kernel images in files named with compression 
+- libdwfl: Yet another prelink-related fix for another regression.
+  	 Look for Linux kernel images in files named with compression
   suffixes.
-- elfcmp: New flag --ignore-build-id to ignore differing build ID 
+- elfcmp: New flag --ignore-build-id to ignore differing build ID
   bits. 	New flag -l/--verbose to print all differences.
 
 * Wed Jan 12 2011  <drepper@gmail.com> 0.151-1
@@ -204,23 +323,23 @@ rm -rf ${RPM_BUILD_ROOT}
 - libdw: Fix for handling huge .debug_aranges section.
 - libdwfl: Fix for handling prelinked DSO with separate debug file.
 - findtextrel: Fix diagnostics to work with usual section ordering.
-- libebl: i386 backend fix for multi-register integer return value 
+- libebl: i386 backend fix for multi-register integer return value
   location.
 
 * Mon Sep 13 2010  <drepper@redhat.com> 0.149-1
-- libdw: Decode new DW_OP_GNU_implicit_pointer operation;        new 
+- libdw: Decode new DW_OP_GNU_implicit_pointer operation;        new
   function dwarf_getlocation_implicit_pointer.
 - libdwfl: New function dwfl_dwarf_line.
-- addr2line: New flag -F/--flags to print more DWARF line information 
+- addr2line: New flag -F/--flags to print more DWARF line information
   details.
 - strip: -g recognizes .gdb_index as a debugging section.
 
 * Mon Jun 28 2010  <drepper@redhat.com> 0.148-1
-- libdw: Accept DWARF 4 format: new functions dwarf_next_unit, 
-  dwarf_offdie_types.        New functions dwarf_lineisa, 
+- libdw: Accept DWARF 4 format: new functions dwarf_next_unit,
+  dwarf_offdie_types.        New functions dwarf_lineisa,
   dwarf_linediscriminator, dwarf_lineop_index.
-- libdwfl: Fixes in core-file handling, support cores from PIEs. 
-  	 When working from build IDs, don't open a named file that 
+- libdwfl: Fixes in core-file handling, support cores from PIEs.
+  	 When working from build IDs, don't open a named file that
   mismatches.
 - readelf: Handle DWARF 4 formats.
 
@@ -238,26 +357,26 @@ rm -rf ${RPM_BUILD_ROOT}
 - Fix build with most recent glibc headers.
 - libelf: More robust to bogus section headers.
 - libdw: Fix CFI decoding.
-- libdwfl: Fix address bias returned by CFI accessors. 	 Fix core 
+- libdwfl: Fix address bias returned by CFI accessors. 	 Fix core
   file module layout identification.
 - readelf: Fix CFI decoding.
 
 * Thu Jan 14 2010  <drepper@redhat.com> 0.144-1
-- libelf: New function elf_getphdrnum. 	Now support using more than 
+- libelf: New function elf_getphdrnum. 	Now support using more than
   65536 program headers in a file.
-- libdw: New function dwarf_aggregate_size for computing (constant) 
-  type        sizes, including array_type cases with nontrivial 
+- libdw: New function dwarf_aggregate_size for computing (constant)
+  type        sizes, including array_type cases with nontrivial
   calculation.
-- readelf: Don't give errors for missing info under -a. 	 
+- readelf: Don't give errors for missing info under -a.
   Handle Linux "VMCOREINFO" notes under -n.
 
 * Mon Sep 21 2009  <drepper@redhat.com> 0.143-1
-- libdw: Various convenience functions for individual attributes now 
-  use dwarf_attr_integrate to look up indirect inherited 
-  attributes.  Location expression handling now supports 
+- libdw: Various convenience functions for individual attributes now
+  use dwarf_attr_integrate to look up indirect inherited
+  attributes.  Location expression handling now supports
   DW_OP_implicit_value.
-- libdwfl: Support automatic decompression of files in XZ format, 
-  and of Linux kernel images made with bzip2 or LZMA (as well 
+- libdwfl: Support automatic decompression of files in XZ format,
+  and of Linux kernel images made with bzip2 or LZMA (as well
   as gzip).
 
 * Mon Jun 29 2009  <drepper@redhat.com> 0.142-1
@@ -269,25 +388,25 @@ rm -rf ${RPM_BUILD_ROOT}
 - readelf: Add -N option, speeds up DWARF printing without address->name lookups.
 - libdw: Add support for decoding DWARF CFI into location description form.
   Handle some new DWARF 3 expression operations previously omitted.
-  Basic handling of some new encodings slated for DWARF 
+  Basic handling of some new encodings slated for DWARF
 
 * Thu Apr 23 2009 Ulrich Drepper <drepper@redhat.com> 0.141-1
 - libebl: sparc backend fixes; 	some more arm backend support
-- libdwfl: fix dwfl_module_build_id for prelinked DSO case; 	 
-  fixes in core file support; 	 dwfl_module_getsym interface 
+- libdwfl: fix dwfl_module_build_id for prelinked DSO case;
+  fixes in core file support; 	 dwfl_module_getsym interface
   improved for non-address symbols
 - strip: fix infinite loop on strange inputs with -f
-- addr2line: take -j/--section=NAME option for binutils compatibility 
+- addr2line: take -j/--section=NAME option for binutils compatibility
   	   (same effect as '(NAME)0x123' syntax already supported)
 
 * Mon Feb 16 2009 Ulrich Drepper <drepper@redhat.com> 0.140-1
 - libelf: Fix regression in creation of section header
-- libdwfl: Less strict behavior if DWARF reader ist just used to 
+- libdwfl: Less strict behavior if DWARF reader ist just used to
   display data
 
 * Thu Jan 22 2009 Ulrich Drepper <drepper@redhat.com> 0.139-1
 - libcpu: Add Intel SSE4 disassembler support
-- readelf: Implement call frame information and exception handling 
+- readelf: Implement call frame information and exception handling
   dumping.          Add -e option.  Enable it implicitly for -a.
 - elflint: Check PT_GNU_EH_FRAME program header entry.
 - libdwfl: Support automatic gzip/bzip2 decompression of ELF files.

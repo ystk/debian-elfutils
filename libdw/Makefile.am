@@ -1,42 +1,42 @@
 ## Process this file with automake to create Makefile.in
 ##
-## Copyright (C) 2002-2010 Red Hat, Inc.
-## This file is part of Red Hat elfutils.
+## Copyright (C) 2002-2010, 2012 Red Hat, Inc.
+## This file is part of elfutils.
 ##
-## Red Hat elfutils is free software; you can redistribute it and/or modify
-## it under the terms of the GNU General Public License as published by the
-## Free Software Foundation; version 2 of the License.
+## This file is free software; you can redistribute it and/or modify
+## it under the terms of either
 ##
-## Red Hat elfutils is distributed in the hope that it will be useful, but
+##   * the GNU Lesser General Public License as published by the Free
+##     Software Foundation; either version 3 of the License, or (at
+##     your option) any later version
+##
+## or
+##
+##   * the GNU General Public License as published by the Free
+##     Software Foundation; either version 2 of the License, or (at
+##     your option) any later version
+##
+## or both in parallel, as here.
+##
+## elfutils is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
-## You should have received a copy of the GNU General Public License along
-## with Red Hat elfutils; if not, write to the Free Software Foundation,
-## Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-##
-## Red Hat elfutils is an included package of the Open Invention Network.
-## An included package of the Open Invention Network is a package for which
-## Open Invention Network licensees cross-license their patents.  No patent
-## license is granted, either expressly or impliedly, by designation as an
-## included package.  Should you wish to participate in the Open Invention
-## Network licensing program, please visit www.openinventionnetwork.com
-## <http://www.openinventionnetwork.com>.
+## You should have received copies of the GNU General Public License and
+## the GNU Lesser General Public License along with this program.  If
+## not, see <http://www.gnu.org/licenses/>.
 ##
 include $(top_srcdir)/config/eu.am
-DEFS += -DIS_LIBDW
 if BUILD_STATIC
 AM_CFLAGS += -fpic
 endif
-INCLUDES += -I$(srcdir)/../libelf
+AM_CPPFLAGS += -I$(srcdir)/../libelf
 VERSION = 1
 
 lib_LIBRARIES = libdw.a
-if !MUDFLAP
 noinst_LIBRARIES = libdw_pic.a
 noinst_PROGRAMS = $(noinst_LIBRARIES:_pic.a=.so)
-endif
 
 include_HEADERS = dwarf.h
 pkginclude_HEADERS = libdw.h
@@ -76,7 +76,7 @@ libdw_a_SOURCES = dwarf_begin.c dwarf_begin_elf.c dwarf_end.c dwarf_getelf.c \
 		  dwarf_getfuncs.c  \
 		  dwarf_decl_file.c dwarf_decl_line.c dwarf_decl_column.c \
 		  dwarf_func_inline.c dwarf_getsrc_file.c \
-		  libdw_findcu.c libdw_form.c libdw_alloc.c memory-access.c \
+		  libdw_findcu.c libdw_form.c libdw_alloc.c \
 		  libdw_visit_scopes.c \
 		  dwarf_entry_breakpoints.c \
 		  dwarf_next_cfi.c \
@@ -84,22 +84,23 @@ libdw_a_SOURCES = dwarf_begin.c dwarf_begin_elf.c dwarf_end.c dwarf_getelf.c \
 		  dwarf_frame_info.c dwarf_frame_cfa.c dwarf_frame_register.c \
 		  dwarf_cfi_addrframe.c \
 		  dwarf_getcfi.c dwarf_getcfi_elf.c dwarf_cfi_end.c \
-		  dwarf_aggregate_size.c dwarf_getlocation_implicit_pointer.c
+		  dwarf_aggregate_size.c dwarf_getlocation_implicit_pointer.c \
+		  dwarf_getlocation_die.c dwarf_getlocation_attr.c \
+		  dwarf_getalt.c dwarf_setalt.c
 
 if MAINTAINER_MODE
 BUILT_SOURCES = $(srcdir)/known-dwarf.h
 MAINTAINERCLEANFILES = $(srcdir)/known-dwarf.h
 $(srcdir)/known-dwarf.h: $(top_srcdir)/config/known-dwarf.awk $(srcdir)/dwarf.h
-	$(AWK) -f $^ > $@.new
+	gawk -f $^ > $@.new
 	mv -f $@.new $@
 endif
 
-if !MUDFLAP
 libdw_pic_a_SOURCES =
 am_libdw_pic_a_OBJECTS = $(libdw_a_SOURCES:.c=.os)
 
 libdw_so_SOURCES =
-libdw.so: $(srcdir)/libdw.map libdw_pic.a \
+libdw.so$(EXEEXT): $(srcdir)/libdw.map libdw_pic.a ../libdwelf/libdwelf_pic.a \
 	  ../libdwfl/libdwfl_pic.a ../libebl/libebl.a \
 	  ../libelf/libelf.so
 # The rpath is necessary for libebl because its $ORIGIN use will
@@ -109,7 +110,7 @@ libdw.so: $(srcdir)/libdw.map libdw_pic.a \
 		-Wl,--version-script,$<,--no-undefined \
 		-Wl,--whole-archive $(filter-out $<,$^) -Wl,--no-whole-archive\
 		-ldl $(zip_LIBS)
-	if readelf -d $@ | fgrep -q TEXTREL; then exit 1; fi
+	if $(READELF) -d $@ | fgrep -q TEXTREL; then exit 1; fi
 	ln -fs $@ $@.$(VERSION)
 
 install: install-am libdw.so
@@ -123,13 +124,16 @@ uninstall: uninstall-am
 	rm -f $(DESTDIR)$(libdir)/libdw.so.$(VERSION)
 	rm -f $(DESTDIR)$(libdir)/libdw.so
 	rmdir --ignore-fail-on-non-empty $(DESTDIR)$(includedir)/elfutils
-endif
 
-libdw_a_LIBADD = $(addprefix ../libdwfl/,$(shell $(AR) t ../libdwfl/libdwfl.a))
+libdwfl_objects = $(shell $(AR) t ../libdwfl/libdwfl.a)
+libdw_a_LIBADD = $(addprefix ../libdwfl/,$(libdwfl_objects))
+
+libdwelf_objects = $(shell $(AR) t ../libdwelf/libdwelf.a)
+libdw_a_LIBADD += $(addprefix ../libdwelf/,$(libdwelf_objects))
 
 noinst_HEADERS = libdwP.h memory-access.h dwarf_abbrev_hash.h \
 		 dwarf_sig8_hash.h cfi.h encoded-value.h
 
-EXTRA_DIST = libdw.map
+EXTRA_DIST = libdw.map known-dwarf.h
 
 MOSTLYCLEANFILES = $(am_libdw_pic_a_OBJECTS) libdw.so.$(VERSION)

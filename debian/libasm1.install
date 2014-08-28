@@ -1,2 +1,2 @@
-usr/lib/libasm.so.1
-usr/lib/libasm-*.so
+usr/lib/*/libasm.so.1
+usr/lib/*/libasm-*.so

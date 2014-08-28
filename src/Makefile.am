@@ -1,39 +1,29 @@
 ## Process this file with automake to create Makefile.in
 ##
-## Copyright (C) 1996-2010 Red Hat, Inc.
-## This file is part of Red Hat elfutils.
+## Copyright (C) 1996-2014 Red Hat, Inc.
+## This file is part of elfutils.
 ##
-## Red Hat elfutils is free software; you can redistribute it and/or modify
-## it under the terms of the GNU General Public License as published by the
-## Free Software Foundation; version 2 of the License.
+## This file is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 3 of the License, or
+## (at your option) any later version.
 ##
-## Red Hat elfutils is distributed in the hope that it will be useful, but
+## elfutils is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-## General Public License for more details.
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+## GNU General Public License for more details.
 ##
-## You should have received a copy of the GNU General Public License along
-## with Red Hat elfutils; if not, write to the Free Software Foundation,
-## Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301 USA.
-##
-## Red Hat elfutils is an included package of the Open Invention Network.
-## An included package of the Open Invention Network is a package for which
-## Open Invention Network licensees cross-license their patents.  No patent
-## license is granted, either expressly or impliedly, by designation as an
-## included package.  Should you wish to participate in the Open Invention
-## Network licensing program, please visit www.openinventionnetwork.com
-## <http://www.openinventionnetwork.com>.
+## You should have received a copy of the GNU General Public License
+## along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ##
 include $(top_srcdir)/config/eu.am
 DEFS += $(YYDEBUG) -DDEBUGPRED=@DEBUGPRED@ \
 	-DSRCDIR=\"$(shell cd $(srcdir);pwd)\" -DOBJDIR=\"$(shell pwd)\"
-INCLUDES += -I$(srcdir)/../libelf -I$(srcdir)/../libebl \
-	    -I$(srcdir)/../libdw -I$(srcdir)/../libdwfl \
-	    -I$(srcdir)/../libasm
+AM_CPPFLAGS += -I$(srcdir)/../libelf -I$(srcdir)/../libebl \
+	    -I$(srcdir)/../libdw -I$(srcdir)/../libdwelf \
+	    -I$(srcdir)/../libdwfl -I$(srcdir)/../libasm
 
 AM_LDFLAGS = -Wl,-rpath-link,../libelf:../libdw
-
-no_mudflap.os = -fmudflap
 
 YACC = @YACC@ -d
 AM_YFLAGS = -pld
@@ -45,7 +35,7 @@ native_ld = @native_ld@
 base_cpu = @base_cpu@
 
 bin_PROGRAMS = readelf nm size strip ld elflint findtextrel addr2line \
-	       elfcmp objdump ranlib strings ar unstrip
+	       elfcmp objdump ranlib strings ar unstrip stack
 
 
 ld_dsos = libld_elf_i386_pic.a
@@ -67,7 +57,7 @@ endif
 ld_SOURCES = ld.c ldgeneric.c ldlex.l ldscript.y symbolhash.c sectionhash.c \
 	     versionhash.c
 
-libar_a_SOURCES = arlib.c arlib2.c
+libar_a_SOURCES = arlib.c arlib2.c arlib-argp.c
 
 noinst_HEADERS = ld.h symbolhash.h sectionhash.h versionhash.h \
 		 ldscript.h xelf.h unaligned.h
@@ -92,32 +82,34 @@ endif
 libebl = ../libebl/libebl.a
 libeu = ../lib/libeu.a
 
-nm_no_Wformat = yes
-size_no_Wformat = yes
-strings_no_Wformat = yes
-addr2line_no_Wformat = yes
+if DEMANGLE
+demanglelib = -lstdc++
+endif
+
 # XXX While the file is not finished, don't warn about this
 ldgeneric_no_Wunused = yes
 
-readelf_LDADD = $(libdw) $(libebl) $(libelf) $(libeu) $(libmudflap) -ldl
-nm_LDADD = $(libdw) $(libebl) $(libelf) $(libeu) $(libmudflap) -ldl
-size_LDADD = $(libelf) $(libeu) $(libmudflap)
-strip_LDADD = $(libebl) $(libelf) $(libeu) $(libmudflap) -ldl
-ld_LDADD = $(libebl) $(libelf) $(libeu) $(libmudflap) -ldl
+readelf_LDADD = $(libdw) $(libebl) $(libelf) $(libeu) -ldl
+nm_LDADD = $(libdw) $(libebl) $(libelf) $(libeu) -ldl \
+	   $(demanglelib)
+size_LDADD = $(libelf) $(libeu)
+strip_LDADD = $(libebl) $(libelf) $(libeu) -ldl
+ld_LDADD = $(libebl) $(libelf) $(libeu) -ldl
 if NATIVE_LD
 # -ldl is always needed for libebl.
 ld_LDADD += libld_elf.a
 endif
 ld_LDFLAGS = -rdynamic
-elflint_LDADD  = $(libebl) $(libelf) $(libeu) $(libmudflap) -ldl
-findtextrel_LDADD = $(libdw) $(libelf) $(libmudflap)
-addr2line_LDADD = $(libdw) $(libelf) $(libmudflap)
-elfcmp_LDADD = $(libebl) $(libelf) $(libmudflap) -ldl
-objdump_LDADD  = $(libasm) $(libebl) $(libelf) $(libeu) $(libmudflap) -ldl
-ranlib_LDADD = libar.a $(libelf) $(libeu) $(libmudflap)
-strings_LDADD = $(libelf) $(libeu) $(libmudflap)
-ar_LDADD = libar.a $(libelf) $(libeu) $(libmudflap)
-unstrip_LDADD = $(libebl) $(libelf) $(libdw) $(libeu) $(libmudflap) -ldl
+elflint_LDADD  = $(libebl) $(libelf) $(libeu) -ldl
+findtextrel_LDADD = $(libdw) $(libelf)
+addr2line_LDADD = $(libdw) $(libelf)
+elfcmp_LDADD = $(libebl) $(libelf) -ldl
+objdump_LDADD  = $(libasm) $(libebl) $(libelf) $(libeu) -ldl
+ranlib_LDADD = libar.a $(libelf) $(libeu)
+strings_LDADD = $(libelf) $(libeu)
+ar_LDADD = libar.a $(libelf) $(libeu)
+unstrip_LDADD = $(libebl) $(libelf) $(libdw) $(libeu) -ldl
+stack_LDADD = $(libebl) $(libelf) $(libdw) $(libeu) -ldl $(demanglelib)
 
 ldlex.o: ldscript.c
 ldlex_no_Werror = yes
@@ -154,8 +146,8 @@ installcheck-binPROGRAMS: $(bin_PROGRAMS)
 	  for opt in --help --version; do \
 	    if LD_LIBRARY_PATH=$(DESTDIR)$(libdir) \
 	       $(DESTDIR)$(bindir)/$$f $$opt > c$${pid}_.out 2> c$${pid}_.err \
-	         && test -n "`cat c$${pid}_.out`" \
-	         && test -z "`cat c$${pid}_.err`"; then :; \
+		 && test -n "`cat c$${pid}_.out`" \
+		 && test -z "`cat c$${pid}_.err`"; then :; \
 	    else echo "$$f does not support $$opt" 1>&2; bad=1; fi; \
 	  done; \
 	done; rm -f c$${pid}_.???; exit $$bad
@@ -171,6 +163,6 @@ make-debug-archive: $(srcdir)/make-debug-archive.in
 	sed -e "s,@UNSTRIP@,$$UNSTRIP,g" -e "s,@AR@,$$AR,g" \
 	    -e "s%[@]PACKAGE_NAME[@]%$(PACKAGE_NAME)%g" \
 	    -e "s%[@]PACKAGE_VERSION[@]%$(PACKAGE_VERSION)%g" \
- 	    $(srcdir)/make-debug-archive.in > $@.new
+	    $(srcdir)/make-debug-archive.in > $@.new
 	chmod +x $@.new
 	mv -f $@.new $@
