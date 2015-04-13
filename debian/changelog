@@ -1,3 +1,25 @@
+elfutils (0.159-4.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Apply an upstream patch to fix the build failure on arm64 (closes: #776523).
+
+ -- Michael Gilbert <mgilbert@asachi.debian.org>  Fri, 13 Feb 2015 22:30:44 +0000
+
+elfutils (0.159-4.1) unstable; urgency=high
+
+  * Non-maintainer upload by the Security Team.
+  * Fix CVE-2014-9447: path traversal issue in ar (closes: #775536).
+
+ -- Michael Gilbert <mgilbert@debian.org>  Mon, 26 Jan 2015 01:49:30 +0000
+
+elfutils (0.159-4) unstable; urgency=medium
+
+  [ Wookey ]
+  * Fix failing run-native-test on arm64 (from Mark Wielaard)
+    (Closes: #753552)
+
+ -- Kurt Roeckx <kurt@roeckx.be>  Sun, 06 Jul 2014 15:21:48 +0200
+
 elfutils (0.159-3) unstable; urgency=medium
 
   * Make it build again on the non linux ports.

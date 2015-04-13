@@ -12,3 +12,6 @@ arm_func_value.patch
 arm_unwind_ret_mask.patch
 non_linux.patch
 unaligned.patch
+aarch64-run-native-test-fix.patch
+CVE-2014-9447.patch
+arm64.patch

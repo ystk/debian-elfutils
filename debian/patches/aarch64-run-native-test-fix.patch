@@ -1,0 +1,12 @@
+Index: elfutils-0.159/backends/aarch64_retval.c
+===================================================================
+--- elfutils-0.159.orig/backends/aarch64_retval.c	2014-02-05 00:21:42.000000000 +0000
++++ elfutils-0.159/backends/aarch64_retval.c	2014-07-03 17:52:54.263101929 +0000
+@@ -357,6 +357,7 @@
+ 		 size of the argument is less than or equal to 8 bytes
+ 		 [...] the argument is copied to the least significant
+ 		 bits in x[NGRN].  */
++	    case DW_ATE_boolean:
+ 	    case DW_ATE_signed:
+ 	    case DW_ATE_unsigned:
+ 	    case DW_ATE_unsigned_char:
