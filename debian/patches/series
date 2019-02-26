@@ -15,3 +15,16 @@ unaligned.patch
 aarch64-run-native-test-fix.patch
 CVE-2014-9447.patch
 arm64.patch
+
+CVE-2019-7149.patch
+CVE-2019-7150.patch
+CVE-2019-7665.patch
+CVE-2017-7608.patch
+CVE-2017-7610.patch
+CVE-2017-7611.patch
+CVE-2017-7612.patch
+CVE-2017-7613.patch
+CVE-2018-16062.patch
+CVE-2018-18520.patch
+CVE-2018-18521.patch
+CVE-2018-18310.patch

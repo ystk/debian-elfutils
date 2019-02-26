@@ -1,3 +1,42 @@
+elfutils (0.159-4.2+deb8u1) jessie-security; urgency=medium
+
+  * Non-maintainer upload by the LTS Team. 
+  * CVE-2019-7665
+    Due to a heap-buffer-overflow problem in function elf32_xlatetom()
+    a crafted ELF input can cause segmentation faults.
+  * CVE-2019-7150
+    Add sanity check for partial core file dynamic data read.
+  * CVE-2019-7149
+    Due to a heap-buffer-overflow problem in function read_srclines()
+    a crafted ELF input can cause segmentation faults.
+  * CVE-2018-18521
+    By using a crafted ELF file, containing a zero sh_entsize, a
+    divide-by-zero vulnerability could allow remote attackers to
+    cause a denial of service (application crash).
+  * CVE-2018-18520
+    By fuzzing an Invalid Address Deference problem in function elf_end
+    has been found.
+  * CVE-2018-18310
+    By fuzzing an Invalid Address Read problem in eu-stack has been found.
+  * CVE-2018-16062
+    By using an AddressSanitizer a heap-buffer-overflow has been found.
+  * CVE-2017-7613
+    By using fuzzing it was found that an allocation failure was not 
+    handled properly.
+  * CVE-2017-7612
+    By using a crafted ELF file, containing an invalid sh_entsize, a
+    remote attackers could cause a denial of service (application crash).
+  * CVE-2017-7611
+    By using a crafted ELF file a remote attackers could cause a denial
+    of service (application crash).
+  * CVE-2017-7610
+    By using a crafted ELF file a remote attackers could cause a denial
+    of service (application crash).
+  * CVE-2017-7608
+    By fuzzing a heap based buffer overflow has been detected.
+
+ -- Thorsten Alteholz <debian@alteholz.de>  Mon, 25 Jan 2018 19:03:02 +0100
+
 elfutils (0.159-4.2) unstable; urgency=medium
 
   * Non-maintainer upload.
